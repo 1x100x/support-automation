@@ -1,0 +1,57 @@
+{
+  "total": 4,
+  "issues": [
+    {
+      "id": "100101",
+      "key": "HELP-101",
+      "self": "https://example.atlassian.net/browse/HELP-101",
+      "fields": {
+        "summary": "Collector cannot complete credit card checkout on release page",
+        "description": "Customer sees a payment failed state after entering credit card details. Coinflow opens, then returns to the release page without minting.",
+        "status": { "name": "Waiting for support" },
+        "created": "2026-05-10T14:30:00.000-0400",
+        "reporter": { "displayName": "Collector" },
+        "labels": ["coinflow", "checkout"]
+      }
+    },
+    {
+      "id": "100102",
+      "key": "HELP-102",
+      "self": "https://example.atlassian.net/browse/HELP-102",
+      "fields": {
+        "summary": "Favorites tab says user not found after favoriting artwork",
+        "description": "Favoriting shows a success toast, but the profile favorites tab is empty and sometimes says user not found.",
+        "status": { "name": "Open" },
+        "created": "2026-05-09T10:15:00.000-0400",
+        "reporter": { "displayName": "Creator" },
+        "labels": ["profile"]
+      }
+    },
+    {
+      "id": "100103",
+      "key": "HELP-103",
+      "self": "https://example.atlassian.net/browse/HELP-103",
+      "fields": {
+        "summary": "Creator asks whether Liquid Edition custom mechanics are supported",
+        "description": "Creator wants to know if burn-to-mint and custom claim flows are supported in the SuperRare UI.",
+        "status": { "name": "Open" },
+        "created": "2026-05-08T09:20:00.000-0400",
+        "reporter": { "displayName": "Creator" },
+        "labels": []
+      }
+    },
+    {
+      "id": "100104",
+      "key": "HELP-104",
+      "self": "https://example.atlassian.net/browse/HELP-104",
+      "fields": {
+        "summary": "Search results show the wrong creator profile",
+        "description": "A collector searched for a creator and clicked the result, but the page showed another account with a similar name.",
+        "status": { "name": "Open" },
+        "created": "2026-05-07T16:45:00.000-0400",
+        "reporter": { "displayName": "Collector" },
+        "labels": ["search", "profile"]
+      }
+    }
+  ]
+}

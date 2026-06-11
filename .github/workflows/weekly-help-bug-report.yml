@@ -1,0 +1,98 @@
+name: Weekly Help Bug Report
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Generate report artifacts without posting to Slack"
+        required: true
+        default: "true"
+        type: choice
+        options:
+          - "true"
+          - "false"
+      post_slack:
+        description: "Post the generated report to Slack"
+        required: true
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+  schedule:
+    - cron: "0 11 * * 5"
+    - cron: "0 12 * * 5"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: weekly-help-bug-report
+  cancel-in-progress: false
+
+jobs:
+  weekly-report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+      JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
+      JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+      SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+      SLACK_REPORT_CHANNEL_ID: ${{ secrets.SLACK_REPORT_CHANNEL_ID }}
+      JIRA_HELP_DASHBOARD_URL: ${{ secrets.JIRA_HELP_DASHBOARD_URL }}
+      SUPPORT_DASHBOARD_LIMIT: ${{ vars.SUPPORT_DASHBOARD_LIMIT || '100' }}
+      SUPPORT_DASHBOARD_RAW: data/help_inbound_raw.json
+      SUPPORT_DASHBOARD_NORMALIZED: data/support_dashboard_tickets.json
+      SUPPORT_BUG_REPORT_JSON: data/support_weekly_bug_report.json
+      SUPPORT_BUG_REPORT_MD: data/support_weekly_bug_report.md
+      SUPPORT_BUG_REPORT_DASHBOARD: data/support_weekly_bug_report_dashboard.json
+
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Run unit tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Workflow smoke check
+        run: python scripts/run_weekly_help_bug_report.py --dry-run
+
+      - name: Preflight
+        run: |
+          if [[ "${{ github.event_name }}" == "schedule" || "${{ inputs.post_slack }}" == "true" ]]; then
+            python scripts/run_weekly_help_bug_report.py --preflight --post-slack
+          else
+            python scripts/run_weekly_help_bug_report.py --preflight
+          fi
+
+      - name: Generate report artifacts
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.post_slack != 'true' }}
+        run: python scripts/run_weekly_help_bug_report.py
+
+      - name: Manual Slack test
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.post_slack == 'true' }}
+        run: python scripts/run_weekly_help_bug_report.py --post-slack
+
+      - name: Scheduled Slack post
+        if: ${{ github.event_name == 'schedule' }}
+        run: python scripts/run_weekly_help_bug_report.py --schedule-gate --post-slack
+
+      - name: Upload report artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: weekly-help-bug-report
+          path: |
+            data/help_inbound_raw.json
+            data/support_dashboard_tickets.json
+            data/support_weekly_bug_report.json
+            data/support_weekly_bug_report.md
+            data/support_weekly_bug_report_dashboard.json
+          if-no-files-found: ignore
+          retention-days: 30

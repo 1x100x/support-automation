@@ -1,0 +1,17 @@
+.DS_Store
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+.env
+.env.*
+!.env.example
+
+data/*.json
+data/*.md
+data/*.tar.gz
+!data/help_inbound_sample.json
+
+weekly-help-jira-*.curlrc
