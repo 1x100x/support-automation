@@ -96,3 +96,11 @@ Generated files are ignored by Git and uploaded as GitHub Actions artifacts:
 - LLM summary requests are redacted before sending, and model output is redacted again before Slack posting.
 - If `OPENAI_API_KEY` is not configured, the report still runs with local heuristic summaries and marks the report metadata accordingly.
 - Raw Jira data and generated reports are workflow artifacts, not committed repo files.
+
+## LLM Troubleshooting
+
+Check `metadata.summary_source`, `metadata.llm_summary_count`, and `metadata.summary_error` in `data/support_weekly_bug_report.json`.
+
+- `summary_source: llm` means every ticket used an LLM summary.
+- `summary_source: partial-llm` means some tickets used LLM summaries and some used the local fallback.
+- `summary_source: heuristic` with an HTTP `429` summary error usually means the OpenAI project is out of quota, billing is not enabled, the project budget is too low, or the selected `OPENAI_SUMMARY_MODEL` is not available to that key.

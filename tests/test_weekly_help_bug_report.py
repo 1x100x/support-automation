@@ -5,7 +5,7 @@ import urllib.error
 from contextlib import redirect_stdout
 from datetime import datetime
 from argparse import Namespace
-from io import StringIO
+from io import BytesIO, StringIO
 from pathlib import Path
 
 
@@ -49,10 +49,19 @@ class WeeklyHelpBugReportTest(unittest.TestCase):
             def read(self):
                 return json.dumps(
                     {
-                        "output_text": (
-                            "Customer cannot settle an imported auction despite having enough ETH; "
-                            "the flow should avoid leaking collector@example.com or "
-                            "0x39e2d6ed53f4866cbf9e12a21d05caa84d2d4dc2."
+                        "output_text": json.dumps(
+                            {
+                                "summaries": [
+                                    {
+                                        "key": "HELP-1",
+                                        "summary": (
+                                            "Customer cannot settle an imported auction despite having enough ETH; "
+                                            "the flow should avoid leaking collector@example.com or "
+                                            "0x39e2d6ed53f4866cbf9e12a21d05caa84d2d4dc2."
+                                        ),
+                                    }
+                                ]
+                            }
                         )
                     }
                 ).encode("utf-8")
@@ -89,6 +98,48 @@ class WeeklyHelpBugReportTest(unittest.TestCase):
         self.assertNotIn("collector@example.com", summary)
         self.assertNotIn("0x39e2d6ed53f4866cbf9e12a21d05caa84d2d4dc2", summary)
         self.assertIn("cannot settle an imported auction", summary)
+
+    def test_llm_summary_http_error_is_recorded_in_metadata(self):
+        ticket = {
+            "key": "HELP-1",
+            "title": "Artwork missing from profile",
+            "description": "issue details: A collector cannot see their artwork on their profile.",
+            "created_at": report.datetime.now(report.ET).isoformat(),
+            "suggested_labels": {"issue_type": "bug", "product_area": "profile"},
+        }
+        old_urlopen = report.urllib.request.urlopen
+        old_api_key = report.os.environ.get("OPENAI_API_KEY")
+
+        def fake_urlopen(*_args, **_kwargs):
+            raise urllib.error.HTTPError(
+                "https://api.openai.com/v1/responses",
+                429,
+                "Too Many Requests",
+                {},
+                BytesIO(b'{"error":{"message":"Rate limit reached for requests"}}'),
+            )
+
+        try:
+            report.os.environ["OPENAI_API_KEY"] = "test-key"
+            report.urllib.request.urlopen = fake_urlopen
+            with redirect_stdout(StringIO()):
+                payload = report.build_report(
+                    {"metadata": {"workflow": "test"}, "tickets": [ticket]},
+                    days=7,
+                    friday_window=False,
+                    use_llm_summaries=True,
+                )
+        finally:
+            report.urllib.request.urlopen = old_urlopen
+            if old_api_key is None:
+                report.os.environ.pop("OPENAI_API_KEY", None)
+            else:
+                report.os.environ["OPENAI_API_KEY"] = old_api_key
+
+        self.assertEqual(payload["metadata"]["summary_source"], "heuristic")
+        self.assertEqual(payload["metadata"]["llm_summary_count"], 0)
+        self.assertIn("Rate limit", payload["metadata"]["summary_error"])
+        self.assertEqual(payload["window_tickets"][0]["summary_source"], "heuristic-fallback")
 
     def test_runner_uses_previous_friday_through_thursday_window(self):
         now = datetime(2026, 6, 3, 15, 0, tzinfo=runner.ET)
