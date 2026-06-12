@@ -69,6 +69,14 @@ def ticket_type(ticket: Dict) -> str:
     return "Bug" if report.is_bug(ticket) else "Task"
 
 
+def sanitize_cell(value: str) -> str:
+    return report.sanitize_slack_text(str(value or "")).replace("|", "\\|").strip()
+
+
+def likely_code_area(ticket: Dict) -> str:
+    return ", ".join(report.likely_code_paths(ticket))
+
+
 def ticket_rows(tickets: Iterable[Dict]) -> List[str]:
     rows = []
     for ticket in tickets:
@@ -86,7 +94,8 @@ def ticket_rows(tickets: Iterable[Dict]) -> List[str]:
                     report.display_name(labels.get("severity", "unknown")),
                     report.display_name(labels.get("root_cause", "unknown")),
                     report.display_name(needs_engineering),
-                    str(ticket.get("title") or "Untitled ticket").replace("|", "\\|"),
+                    sanitize_cell(report.ticket_summary(ticket)),
+                    sanitize_cell(likely_code_area(ticket)),
                 ]
             )
             + " |"
@@ -137,8 +146,8 @@ def build_canvas_markdown(weekly_report: Dict, trend_data: Dict, lookback_weeks:
     if weekly_report.get("bug_tickets"):
         lines.extend(
             [
-                "| Ticket | Area | Severity | Root Cause | Summary |",
-                "|---|---|---|---|---|",
+            "| Ticket | Area | Severity | Root Cause | Summary | Likely Code Area |",
+            "|---|---|---|---|---|---|",
             ]
         )
         for ticket in weekly_report["bug_tickets"]:
@@ -151,7 +160,8 @@ def build_canvas_markdown(weekly_report: Dict, trend_data: Dict, lookback_weeks:
                         report.display_name(labels.get("product_area", "unknown")),
                         report.display_name(labels.get("severity", "unknown")),
                         report.display_name(labels.get("root_cause", "unknown")),
-                        report.ticket_summary(ticket).replace("|", "\\|"),
+                        sanitize_cell(report.ticket_summary(ticket)),
+                        sanitize_cell(likely_code_area(ticket)),
                     ]
                 )
                 + " |"
@@ -180,8 +190,8 @@ def build_canvas_markdown(weekly_report: Dict, trend_data: Dict, lookback_weeks:
             "",
             "# Ticket Detail",
             "",
-            "| Ticket | Type | Area | Severity | Root Cause | Needs Eng | Summary |",
-            "|---|---|---|---|---|---|---|",
+            "| Ticket | Type | Area | Severity | Root Cause | Needs Eng | Summary | Likely Code Area |",
+            "|---|---|---|---|---|---|---|---|",
             *ticket_rows(weekly_report.get("window_tickets", [])),
             "",
             "# Notes",
