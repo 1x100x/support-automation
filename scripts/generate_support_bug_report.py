@@ -295,13 +295,32 @@ def extract_openai_text(result: Dict) -> str:
     return ""
 
 
-def llm_ticket_summary(ticket: Dict, *, api_key: str, model: str, timeout: int = 30) -> str:
-    context = llm_context_for_ticket(ticket)
+def parse_json_object(text: str) -> Dict:
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        match = re.search(r"\{.*\}", text, flags=re.DOTALL)
+        if not match:
+            raise
+        return json.loads(match.group(0))
+
+
+def http_error_message(exc: urllib.error.HTTPError) -> str:
+    body = exc.read().decode("utf-8", errors="replace")
+    if not body:
+        return f"HTTP {exc.code}: {exc.reason}"
+    return sanitize_slack_text(body)[:1000]
+
+
+def llm_ticket_summaries(tickets: List[Dict], *, api_key: str, model: str, timeout: int = 45) -> Dict[str, str]:
+    contexts = [llm_context_for_ticket(ticket) for ticket in tickets]
     prompt = (
-        "Write one cohesive support-report summary for this Jira Help ticket. "
+        "Write one cohesive support-report summary per Jira Help ticket. "
         "Focus on the actual issue the customer is having and any useful observed behavior. "
-        "Use 25 to 45 words. Do not include emails, wallet addresses, raw URLs, markdown, "
-        "ticket keys, or root-cause claims unless the customer explicitly described the cause."
+        "Each summary must be 25 to 45 words. Do not include emails, wallet addresses, raw URLs, "
+        "markdown, ticket keys, or root-cause claims unless the customer explicitly described the cause. "
+        "Return only JSON shaped exactly like: "
+        "{\"summaries\":[{\"key\":\"HELP-123\",\"summary\":\"...\"}]}"
     )
     payload = {
         "model": model,
@@ -315,10 +334,10 @@ def llm_ticket_summary(ticket: Dict, *, api_key: str, model: str, timeout: int =
             },
             {
                 "role": "user",
-                "content": f"{prompt}\n\nTicket JSON:\n{json.dumps(context, ensure_ascii=True)}",
+                "content": f"{prompt}\n\nTicket JSON array:\n{json.dumps(contexts, ensure_ascii=True)}",
             },
         ],
-        "max_output_tokens": 140,
+        "max_output_tokens": max(300, 120 * len(tickets)),
     }
     req = urllib.request.Request(
         url="https://api.openai.com/v1/responses",
@@ -331,28 +350,60 @@ def llm_ticket_summary(ticket: Dict, *, api_key: str, model: str, timeout: int =
     )
     with urllib.request.urlopen(req, timeout=timeout) as response:
         result = json.loads(response.read().decode("utf-8"))
-    summary = clean_summary_text(extract_openai_text(result))
-    return summary or ticket_summary({**ticket, "llm_summary": ""})
+    parsed = parse_json_object(extract_openai_text(result))
+    summaries = {}
+    for item in parsed.get("summaries", []):
+        key = str(item.get("key") or "").strip()
+        summary = clean_summary_text(str(item.get("summary") or ""))
+        if key and summary:
+            summaries[key] = summary
+    return summaries
 
 
-def add_llm_summaries(tickets: List[Dict]) -> Tuple[int, str]:
+def llm_ticket_summary(ticket: Dict, *, api_key: str, model: str, timeout: int = 30) -> str:
+    key = ticket.get("key") or ticket.get("id") or ""
+    summaries = llm_ticket_summaries([ticket], api_key=api_key, model=model, timeout=timeout)
+    return summaries.get(key) or ticket_summary({**ticket, "llm_summary": ""})
+
+
+def add_llm_summaries(tickets: List[Dict]) -> Tuple[int, str, str]:
     api_key = os.getenv("OPENAI_API_KEY", "").strip()
     if not api_key:
         print("OPENAI_API_KEY is not set; using heuristic ticket summaries.")
-        return 0, "heuristic"
+        return 0, "heuristic", "OPENAI_API_KEY is not set."
 
     model = os.getenv("OPENAI_SUMMARY_MODEL", "gpt-4.1-mini").strip() or "gpt-4.1-mini"
+    try:
+        summaries = llm_ticket_summaries(tickets, api_key=api_key, model=model)
+    except urllib.error.HTTPError as exc:
+        message = http_error_message(exc)
+        print(f"::warning title=LLM summaries failed::OpenAI request failed: {message}")
+        for ticket in tickets:
+            ticket["summary_source"] = "heuristic-fallback"
+        return 0, "heuristic", message
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+        message = sanitize_slack_text(str(exc))[:1000]
+        print(f"::warning title=LLM summaries failed::OpenAI request failed: {message}")
+        for ticket in tickets:
+            ticket["summary_source"] = "heuristic-fallback"
+        return 0, "heuristic", message
+
     generated = 0
     for ticket in tickets:
-        try:
-            ticket["llm_summary"] = llm_ticket_summary(ticket, api_key=api_key, model=model)
+        key = ticket.get("key") or ticket.get("id") or ""
+        summary = summaries.get(key)
+        if summary:
+            ticket["llm_summary"] = summary
             ticket["summary_source"] = "llm"
             generated += 1
-        except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
-            key = ticket.get("key") or ticket.get("id") or "NO-KEY"
-            print(f"LLM summary failed for {key}; using heuristic summary. Error: {exc}")
+        else:
             ticket["summary_source"] = "heuristic-fallback"
-    return generated, "llm" if generated else "heuristic"
+    if generated < len(tickets):
+        missing = len(tickets) - generated
+        message = f"LLM returned summaries for {generated} of {len(tickets)} tickets; {missing} used heuristic fallback."
+        print(f"::warning title=Partial LLM summaries::{message}")
+        return generated, "partial-llm", message
+    return generated, "llm", ""
 
 
 def likely_code_paths(ticket: Dict) -> List[str]:
@@ -534,8 +585,9 @@ def build_report(data: Dict, days: int, friday_window: bool, use_llm_summaries: 
     window_tickets = [dict(ticket) for ticket in tickets if in_window(ticket, since, until)]
     llm_summary_count = 0
     summary_source = "heuristic"
+    summary_error = ""
     if use_llm_summaries and window_tickets:
-        llm_summary_count, summary_source = add_llm_summaries(window_tickets)
+        llm_summary_count, summary_source, summary_error = add_llm_summaries(window_tickets)
     bug_tickets = [ticket for ticket in window_tickets if is_bug(ticket)]
     service_tickets = [ticket for ticket in window_tickets if not is_bug(ticket)]
     root_cause_review = [
@@ -562,6 +614,7 @@ def build_report(data: Dict, days: int, friday_window: bool, use_llm_summaries: 
             "dashboard_url": os.getenv("JIRA_HELP_DASHBOARD_URL", ""),
             "summary_source": summary_source,
             "llm_summary_count": llm_summary_count,
+            "summary_error": summary_error,
             "write_policy": "No Jira or GitHub writes are performed by this script. Slack posting requires --post-slack.",
         },
         "totals": {
