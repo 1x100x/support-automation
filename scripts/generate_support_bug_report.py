@@ -105,6 +105,11 @@ def format_report_date(value: str) -> str:
     return f"{dt.month}/{dt.day}/{str(dt.year)[-2:]}"
 
 
+def format_post_date(value: str) -> str:
+    dt = datetime.fromisoformat(value).astimezone(ET)
+    return f"{dt.month}/{dt.day}/{dt.year}"
+
+
 def report_month(value: str) -> str:
     return datetime.fromisoformat(value).astimezone(ET).strftime("%B")
 
@@ -236,7 +241,7 @@ def markdown_report(payload: Dict) -> str:
     metadata = payload["metadata"]
     issue_breakdown = payload["breakdowns"]["issue_type_all"]
     window_text = f"{format_day(metadata['since'])} to {format_day(metadata['until'])}"
-    date_text = format_report_date(metadata["until"])
+    date_text = format_post_date(metadata["generated_at"])
     month = report_month(metadata["until"])
     jira_month_url = metadata.get("dashboard_url") or "https://superrare.atlassian.net/jira/dashboards/10004?maximized=10234"
     jira_issue_url = jira_search_link(payload["window_tickets"], metadata.get("jira_base_url") or "https://superrare.atlassian.net")
@@ -261,26 +266,27 @@ def markdown_report(payload: Dict) -> str:
     if payload["bug_tickets_by_area"]:
         for area, tickets in payload["bug_tickets_by_area"].items():
             lines.append(f":mag_right: *{display_name(area)} Issues ({len(tickets)} {plural(len(tickets), 'Ticket')})*")
+            lines.append("")
             for ticket in tickets:
                 labels = labels_for(ticket)
                 reporter = ticket.get("reporter") or "Unknown"
                 title = ticket.get("title") or "Untitled ticket"
                 lines.extend(
                     [
-                        f"• Reported By: {reporter}",
-                        f"• Ticket: {issue_link(ticket)} - {title}",
-                        f"• *Summary:* {ticket_summary(ticket)}",
-                        f"• Severity: `{labels.get('severity', 'unknown')}` | Root cause: `{labels.get('root_cause', 'unknown')}`",
+                        f"Reported By: {reporter}",
+                        f"Ticket: {issue_link(ticket)} - {title}",
+                        f"Summary: {ticket_summary(ticket)}",
+                        f"•• Severity: `{labels.get('severity', 'unknown')}` | Possible root cause: `{labels.get('root_cause', 'unknown')}`",
                         "",
                     ]
                 )
     else:
         lines.extend(["No website bug tickets were found for this window.", ""])
 
-    lines.extend([f":bellhop_bell: *<{jira_issue_url}|SUPERRARE SERVICES>*", ""])
+    lines.extend(["", f":bellhop_bell: *<{jira_issue_url}|SUPERRARE SERVICES>*", ""])
     services = payload["service_ticket_counts"]
     if services:
-        lines.extend([f"• {display_name(label)} ({count})" for label, count in services])
+        lines.extend([f"{display_name(label)} ({count})" for label, count in services])
     else:
         lines.append("- No account support, task, or service tickets were found for this window.")
 
@@ -294,7 +300,7 @@ def markdown_report(payload: Dict) -> str:
     if payload["root_cause_review"]:
         lines.extend(ticket_line(ticket) for ticket in payload["root_cause_review"])
     else:
-        lines.append("- No low-confidence or unknown-root-cause bugs found.")
+        lines.append("No low-confidence or unknown possible root causes found.")
 
     lines.extend(
         [
