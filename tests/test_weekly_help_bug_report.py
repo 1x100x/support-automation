@@ -1,4 +1,5 @@
 import sys
+import json
 import unittest
 import urllib.error
 from contextlib import redirect_stdout
@@ -20,6 +21,75 @@ import support_triage
 
 
 class WeeklyHelpBugReportTest(unittest.TestCase):
+    def test_ticket_summary_prefers_llm_summary(self):
+        summary = report.ticket_summary(
+            {
+                "title": "Raw title",
+                "description": "issue details: raw description",
+                "llm_summary": "Collector cannot see newly minted artwork on their profile even though the artwork page is available.",
+            }
+        )
+
+        self.assertEqual(
+            summary,
+            "Collector cannot see newly minted artwork on their profile even though the artwork page is available",
+        )
+
+    def test_llm_ticket_summary_redacts_request_and_response(self):
+        old_urlopen = report.urllib.request.urlopen
+        captured = {}
+
+        class FakeResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def read(self):
+                return json.dumps(
+                    {
+                        "output_text": (
+                            "Customer cannot settle an imported auction despite having enough ETH; "
+                            "the flow should avoid leaking collector@example.com or "
+                            "0x39e2d6ed53f4866cbf9e12a21d05caa84d2d4dc2."
+                        )
+                    }
+                ).encode("utf-8")
+
+        def fake_urlopen(req, timeout=30):
+            captured["body"] = req.data.decode("utf-8")
+            captured["timeout"] = timeout
+            return FakeResponse()
+
+        try:
+            report.urllib.request.urlopen = fake_urlopen
+            summary = report.llm_ticket_summary(
+                {
+                    "key": "HELP-1",
+                    "title": "[SETTLE ISSUE] collector@example.com cannot settle",
+                    "description": (
+                        "issue details: User collector@example.com with wallet "
+                        "0x39e2d6ed53f4866cbf9e12a21d05caa84d2d4dc2 cannot settle. "
+                        "links: https://example.com/raw"
+                    ),
+                    "suggested_labels": {"product_area": "wallet", "root_cause": "permissions"},
+                },
+                api_key="test-key",
+                model="test-model",
+            )
+        finally:
+            report.urllib.request.urlopen = old_urlopen
+
+        self.assertNotIn("collector@example.com", captured["body"])
+        self.assertNotIn("0x39e2d6ed53f4866cbf9e12a21d05caa84d2d4dc2", captured["body"])
+        self.assertNotIn("https://example.com/raw", captured["body"])
+        self.assertIn("[redacted email]", captured["body"])
+        self.assertIn("[redacted address]", captured["body"])
+        self.assertNotIn("collector@example.com", summary)
+        self.assertNotIn("0x39e2d6ed53f4866cbf9e12a21d05caa84d2d4dc2", summary)
+        self.assertIn("cannot settle an imported auction", summary)
+
     def test_runner_uses_previous_friday_through_thursday_window(self):
         now = datetime(2026, 6, 3, 15, 0, tzinfo=runner.ET)
 
