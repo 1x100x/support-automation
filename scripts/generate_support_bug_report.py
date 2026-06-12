@@ -226,6 +226,10 @@ def compress_detail_sentence(text: str) -> str:
 
 
 def ticket_summary(ticket: Dict, limit: int = 260) -> str:
+    llm_summary = clean_summary_text(str(ticket.get("llm_summary") or ""))
+    if llm_summary:
+        return llm_summary[: limit - 1].rstrip() + "..." if len(llm_summary) > limit else llm_summary
+
     details = issue_detail_text(ticket)
     title = concise_title(ticket)
     detail_sentences = condensed_sentences(details)
@@ -252,6 +256,103 @@ def ticket_summary(ticket: Dict, limit: int = 260) -> str:
     if len(text) <= limit:
         return text
     return text[: limit - 1].rstrip() + "..."
+
+
+def llm_context_for_ticket(ticket: Dict) -> Dict:
+    labels = labels_for(ticket)
+    return {
+        "key": ticket.get("key") or ticket.get("id") or "",
+        "title": sanitize_slack_text(str(ticket.get("title") or "")),
+        "description": sanitize_slack_text(issue_detail_text(ticket) or str(ticket.get("description") or "")),
+        "status": sanitize_slack_text(str(ticket.get("status") or "")),
+        "current_jira_labels": ticket.get("current_labels")
+        or ticket.get("current_jira_labels")
+        or ticket.get("jira_labels")
+        or [],
+        "suggested_labels": {
+            "product_area": labels.get("product_area", "unknown"),
+            "issue_type": labels.get("issue_type", "unknown"),
+            "severity": labels.get("severity", "unknown"),
+            "root_cause": labels.get("root_cause", "unknown"),
+        },
+    }
+
+
+def extract_openai_text(result: Dict) -> str:
+    if result.get("output_text"):
+        return str(result["output_text"]).strip()
+    for item in result.get("output", []):
+        if item.get("type") != "message":
+            continue
+        for content in item.get("content", []):
+            if content.get("type") in {"output_text", "text"} and content.get("text"):
+                return str(content["text"]).strip()
+    choices = result.get("choices") or []
+    if choices:
+        message = choices[0].get("message") or {}
+        if message.get("content"):
+            return str(message["content"]).strip()
+    return ""
+
+
+def llm_ticket_summary(ticket: Dict, *, api_key: str, model: str, timeout: int = 30) -> str:
+    context = llm_context_for_ticket(ticket)
+    prompt = (
+        "Write one cohesive support-report summary for this Jira Help ticket. "
+        "Focus on the actual issue the customer is having and any useful observed behavior. "
+        "Use 25 to 45 words. Do not include emails, wallet addresses, raw URLs, markdown, "
+        "ticket keys, or root-cause claims unless the customer explicitly described the cause."
+    )
+    payload = {
+        "model": model,
+        "input": [
+            {
+                "role": "system",
+                "content": (
+                    "You summarize customer support tickets for a weekly product and engineering "
+                    "bug report. Be specific, neutral, concise, and privacy preserving."
+                ),
+            },
+            {
+                "role": "user",
+                "content": f"{prompt}\n\nTicket JSON:\n{json.dumps(context, ensure_ascii=True)}",
+            },
+        ],
+        "max_output_tokens": 140,
+    }
+    req = urllib.request.Request(
+        url="https://api.openai.com/v1/responses",
+        data=json.dumps(payload).encode("utf-8"),
+        method="POST",
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as response:
+        result = json.loads(response.read().decode("utf-8"))
+    summary = clean_summary_text(extract_openai_text(result))
+    return summary or ticket_summary({**ticket, "llm_summary": ""})
+
+
+def add_llm_summaries(tickets: List[Dict]) -> Tuple[int, str]:
+    api_key = os.getenv("OPENAI_API_KEY", "").strip()
+    if not api_key:
+        print("OPENAI_API_KEY is not set; using heuristic ticket summaries.")
+        return 0, "heuristic"
+
+    model = os.getenv("OPENAI_SUMMARY_MODEL", "gpt-4.1-mini").strip() or "gpt-4.1-mini"
+    generated = 0
+    for ticket in tickets:
+        try:
+            ticket["llm_summary"] = llm_ticket_summary(ticket, api_key=api_key, model=model)
+            ticket["summary_source"] = "llm"
+            generated += 1
+        except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+            key = ticket.get("key") or ticket.get("id") or "NO-KEY"
+            print(f"LLM summary failed for {key}; using heuristic summary. Error: {exc}")
+            ticket["summary_source"] = "heuristic-fallback"
+    return generated, "llm" if generated else "heuristic"
 
 
 def likely_code_paths(ticket: Dict) -> List[str]:
@@ -423,14 +524,18 @@ def legacy_markdown_report(payload: Dict) -> str:
     return "\n".join(lines)
 
 
-def build_report(data: Dict, days: int, friday_window: bool) -> Dict:
+def build_report(data: Dict, days: int, friday_window: bool, use_llm_summaries: bool = False) -> Dict:
     if friday_window:
         since, until = friday_to_thursday_window()
     else:
         until = datetime.now(ET)
         since = until - timedelta(days=days)
     tickets = data.get("tickets", [])
-    window_tickets = [ticket for ticket in tickets if in_window(ticket, since, until)]
+    window_tickets = [dict(ticket) for ticket in tickets if in_window(ticket, since, until)]
+    llm_summary_count = 0
+    summary_source = "heuristic"
+    if use_llm_summaries and window_tickets:
+        llm_summary_count, summary_source = add_llm_summaries(window_tickets)
     bug_tickets = [ticket for ticket in window_tickets if is_bug(ticket)]
     service_tickets = [ticket for ticket in window_tickets if not is_bug(ticket)]
     root_cause_review = [
@@ -455,6 +560,8 @@ def build_report(data: Dict, days: int, friday_window: bool) -> Dict:
             "source_workflow": data.get("metadata", {}).get("workflow", "unknown"),
             "jira_base_url": source_metadata.get("base_url", ""),
             "dashboard_url": os.getenv("JIRA_HELP_DASHBOARD_URL", ""),
+            "summary_source": summary_source,
+            "llm_summary_count": llm_summary_count,
             "write_policy": "No Jira or GitHub writes are performed by this script. Slack posting requires --post-slack.",
         },
         "totals": {
@@ -542,10 +649,20 @@ def main() -> None:
         default=os.getenv("SLACK_REPORT_CHANNEL_ID", ""),
         help="Slack channel ID for posting. Defaults to SLACK_REPORT_CHANNEL_ID.",
     )
+    parser.add_argument(
+        "--use-llm-summaries",
+        action="store_true",
+        help="Use OPENAI_API_KEY to generate cohesive ticket summaries before falling back to local heuristics.",
+    )
     args = parser.parse_args()
 
     data = json.loads(Path(args.input).read_text(encoding="utf-8"))
-    report = build_report(data, args.days, args.friday_window)
+    use_llm_summaries = args.use_llm_summaries or os.getenv("SUPPORT_USE_LLM_SUMMARIES", "").lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+    report = build_report(data, args.days, args.friday_window, use_llm_summaries=use_llm_summaries)
     json_path = Path(args.output_json)
     md_path = Path(args.output_md)
     json_path.parent.mkdir(parents=True, exist_ok=True)

@@ -108,6 +108,11 @@ def print_preflight(args: argparse.Namespace, *, jql: str, since: datetime, repo
     print(f"- Markdown output: {args.report_md}")
     print(f"- JSON output: {args.report_json}")
     print(f"- Dashboard output: {args.dashboard_output}")
+    print(f"- Canvas output: {getattr(args, 'canvas_output', 'data/support_weekly_bug_report_canvas.md')}")
+    if os.getenv("SUPPORT_USE_LLM_SUMMARIES", "").lower() in {"1", "true", "yes"}:
+        print(f"- LLM summaries: enabled ({env_status('OPENAI_API_KEY')})")
+    else:
+        print("- LLM summaries: disabled")
     print("- Required values:")
     for key, status in checks.items():
         if key == "env_file":
@@ -158,6 +163,10 @@ def main() -> None:
     parser.add_argument(
         "--dashboard-output",
         default=os.getenv("SUPPORT_BUG_REPORT_DASHBOARD", "data/support_weekly_bug_report_dashboard.json"),
+    )
+    parser.add_argument(
+        "--canvas-output",
+        default=os.getenv("SUPPORT_BUG_REPORT_CANVAS", "data/support_weekly_bug_report_canvas.md"),
     )
     parser.add_argument("--limit", type=int, default=int(os.getenv("SUPPORT_DASHBOARD_LIMIT", "100")))
     parser.add_argument("--jql", default="", help="Override the generated Help-board Friday-window JQL.")
@@ -239,6 +248,8 @@ def main() -> None:
         args.report_md,
         "--friday-window",
     ]
+    if os.getenv("SUPPORT_USE_LLM_SUMMARIES", "").lower() in {"1", "true", "yes"}:
+        report_command.append("--use-llm-summaries")
     if args.post_slack:
         channel = args.slack_channel or ("" if args.dry_run else require_env("SLACK_REPORT_CHANNEL_ID"))
         if not args.dry_run:
@@ -257,9 +268,23 @@ def main() -> None:
         ],
         dry_run=args.dry_run,
     )
+    run_step(
+        [
+            sys.executable,
+            "scripts/generate_support_canvas.py",
+            "--report-json",
+            args.report_json,
+            "--trend-input",
+            args.normalized_output,
+            "--output",
+            args.canvas_output,
+        ],
+        dry_run=args.dry_run,
+    )
     if not args.dry_run:
         print(f"Ready to review/share: {args.report_md}")
         print(f"Ready to render dashboard: {args.dashboard_output}")
+        print(f"Ready to review Canvas markdown: {args.canvas_output}")
 
 
 if __name__ == "__main__":

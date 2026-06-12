@@ -41,12 +41,16 @@ jobs:
       SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
       SLACK_REPORT_CHANNEL_ID: ${{ secrets.SLACK_REPORT_CHANNEL_ID }}
       JIRA_HELP_DASHBOARD_URL: ${{ secrets.JIRA_HELP_DASHBOARD_URL }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       SUPPORT_DASHBOARD_LIMIT: ${{ vars.SUPPORT_DASHBOARD_LIMIT || '100' }}
+      SUPPORT_USE_LLM_SUMMARIES: ${{ vars.SUPPORT_USE_LLM_SUMMARIES || 'true' }}
+      OPENAI_SUMMARY_MODEL: ${{ vars.OPENAI_SUMMARY_MODEL || 'gpt-4.1-mini' }}
       SUPPORT_DASHBOARD_RAW: data/help_inbound_raw.json
       SUPPORT_DASHBOARD_NORMALIZED: data/support_dashboard_tickets.json
       SUPPORT_BUG_REPORT_JSON: data/support_weekly_bug_report.json
       SUPPORT_BUG_REPORT_MD: data/support_weekly_bug_report.md
       SUPPORT_BUG_REPORT_DASHBOARD: data/support_weekly_bug_report_dashboard.json
+      SUPPORT_BUG_REPORT_CANVAS: data/support_weekly_bug_report_canvas.md
 
     steps:
       - name: Check out repo
@@ -94,5 +98,6 @@ jobs:
             data/support_weekly_bug_report.json
             data/support_weekly_bug_report.md
             data/support_weekly_bug_report_dashboard.json
+            data/support_weekly_bug_report_canvas.md
           if-no-files-found: ignore
           retention-days: 30
