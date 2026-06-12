@@ -282,6 +282,75 @@ class WeeklyHelpBugReportTest(unittest.TestCase):
         self.assertEqual(payload["breakdowns"]["issue_type_all"], [("task", 1)])
         self.assertEqual(payload["service_ticket_counts"], [("task", 1)])
 
+    def test_slack_report_header_uses_generated_post_date(self):
+        payload = {
+            "metadata": {
+                "generated_at": "2026-06-12T09:00:00-04:00",
+                "since": "2026-06-05T00:00:00-04:00",
+                "until": "2026-06-11T23:59:59-04:00",
+                "dashboard_url": "",
+                "jira_base_url": "https://example.atlassian.net",
+            },
+            "totals": {"inbound": 0, "bugs": 0, "needs_engineering": 0, "low_confidence": 0},
+            "breakdowns": {"issue_type_all": [], "product_area": [], "root_cause": []},
+            "bug_tickets_by_area": {},
+            "service_ticket_counts": [],
+            "root_cause_review": [],
+            "window_tickets": [],
+        }
+
+        markdown = report.markdown_report(payload)
+
+        self.assertIn("*WEEKLY BUG REPORT 6/12/2026*", markdown)
+        self.assertNotIn("*WEEKLY BUG REPORT 6/11/26*", markdown)
+
+    def test_slack_ticket_layout_uses_possible_root_cause_wording(self):
+        payload = {
+            "metadata": {
+                "generated_at": "2026-06-12T09:00:00-04:00",
+                "since": "2026-06-05T00:00:00-04:00",
+                "until": "2026-06-11T23:59:59-04:00",
+                "dashboard_url": "",
+                "jira_base_url": "https://example.atlassian.net",
+            },
+            "totals": {"inbound": 1, "bugs": 1, "needs_engineering": 1, "low_confidence": 0},
+            "breakdowns": {
+                "issue_type_all": [("bug", 1)],
+                "product_area": [("profile", 1)],
+                "root_cause": [("data-mismatch", 1)],
+            },
+            "bug_tickets_by_area": {
+                "profile": [
+                    {
+                        "key": "HELP-1",
+                        "title": "Profile missing artwork",
+                        "description": "issue details: Artwork is missing from profile. links: https://example.com",
+                        "reporter": "Support",
+                        "suggested_labels": {
+                            "severity": "medium",
+                            "root_cause": "data-mismatch",
+                            "product_area": "profile",
+                            "issue_type": "bug",
+                        },
+                    }
+                ]
+            },
+            "service_ticket_counts": [("task", 1)],
+            "root_cause_review": [],
+            "window_tickets": [],
+        }
+
+        markdown = report.markdown_report(payload)
+
+        self.assertIn("\nReported By: Support\n", markdown)
+        self.assertIn("\nTicket: `HELP-1` - Profile missing artwork\n", markdown)
+        self.assertIn("\nSummary: Profile missing artwork: Artwork is missing from profile.\n", markdown)
+        self.assertIn("•• Severity: `medium` | Possible root cause: `data-mismatch`", markdown)
+        self.assertIn("\n\n:bellhop_bell:", markdown)
+        self.assertIn("\nTask (1)\n", markdown)
+        self.assertNotIn("• Reported By", markdown)
+        self.assertNotIn("Root cause:", markdown)
+
     def test_canvas_markdown_includes_weekly_bug_task_trend(self):
         weekly_report = {
             "metadata": {
