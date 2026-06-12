@@ -7,6 +7,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List
 
+from generate_support_bug_report import likely_code_paths, ticket_summary
+
 
 def display_name(value: str) -> str:
     words = str(value or "unknown").replace("-", " ").replace("_", " ").split()
@@ -33,6 +35,7 @@ def build_ticket_detail(report: Dict) -> List[Dict]:
         labels = ticket_labels(ticket)
         issue_type = labels.get("issue_type", "unknown")
         needs_engineering = labels.get("needs_engineering", "unknown")
+        likely_code_area = ", ".join(likely_code_paths(ticket))
         if issue_type != "bug":
             needs_engineering = "no"
         rows.append(
@@ -43,7 +46,8 @@ def build_ticket_detail(report: Dict) -> List[Dict]:
                 "severity": labels.get("severity", "unknown"),
                 "root_cause": labels.get("root_cause", "unknown"),
                 "needs_engineering": needs_engineering,
-                "title": ticket.get("title") or "Untitled ticket",
+                "summary": ticket_summary(ticket),
+                "likely_code_area": likely_code_area,
                 "source_url": ticket.get("source_url") or "",
             }
         )
@@ -133,7 +137,7 @@ def build_dashboard_payload(report: Dict, *, source_path: str, status: str = "re
         source_path,
         "ticket_detail",
         (
-            "SELECT key, issue_type, product_area, severity, root_cause, needs_engineering, title "
+            "SELECT key, issue_type, product_area, severity, root_cause, needs_engineering, summary, likely_code_area "
             "FROM ticket_detail ORDER BY key;"
         ),
     )
@@ -227,7 +231,8 @@ def build_dashboard_payload(report: Dict, *, source_path: str, status: str = "re
                     {"field": "severity", "label": "Severity", "type": "text"},
                     {"field": "root_cause", "label": "Root Cause", "type": "text"},
                     {"field": "needs_engineering", "label": "Needs Eng", "type": "text"},
-                    {"field": "title", "label": "Summary", "type": "text"},
+                    {"field": "summary", "label": "Summary", "type": "text"},
+                    {"field": "likely_code_area", "label": "Likely Code Area", "type": "text"},
                 ],
             }
         ],

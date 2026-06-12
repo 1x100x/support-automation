@@ -23,6 +23,12 @@ SUMMARY_STOP_RE = re.compile(
     r"\b(?:links?|attachments?|notes?|profile|contract|be cautious)\s*:",
     re.IGNORECASE,
 )
+FILLER_RE = re.compile(
+    r"\b(?:hello|hi|hey|please|thank you|thanks|btw|i hope you can help me|could you please|can you help me understand what has happened)\b",
+    re.IGNORECASE,
+)
+USERNAME_PREFIX_RE = re.compile(r"^@\S+\s*-\s*", re.IGNORECASE)
+NON_CODE_PATH_RE = re.compile(r"(^|/)(references?|docs?|notes?|projects?)(/|$)|(^|/)\.env|\.md$", re.IGNORECASE)
 
 
 def parse_dt(value: str):
@@ -165,6 +171,13 @@ def sanitize_slack_text(value: str) -> str:
     return URL_RE.sub("", text)
 
 
+def clean_summary_text(value: str) -> str:
+    text = sanitize_slack_text(value)
+    text = FILLER_RE.sub(" ", text)
+    text = re.sub(r"\s+", " ", text)
+    return text.strip(" .,:;-")
+
+
 def issue_detail_text(ticket: Dict) -> str:
     text = " ".join(str(ticket.get("description") or "").split())
     if not text:
@@ -185,19 +198,71 @@ def title_context(ticket: Dict) -> str:
     return " ".join(title.split())
 
 
+def concise_title(ticket: Dict) -> str:
+    title = title_context(ticket)
+    title = USERNAME_PREFIX_RE.sub("", title)
+    return clean_summary_text(title)
+
+
+def condensed_sentences(text: str) -> List[str]:
+    parts = [part.strip() for part in re.split(r"(?<=[.!?])\s+", text) if part.strip()]
+    if not parts and text:
+        parts = [text]
+    cleaned = []
+    for part in parts:
+        normalized = clean_summary_text(part)
+        if normalized:
+            cleaned.append(normalized)
+    return cleaned
+
+
+def compress_detail_sentence(text: str) -> str:
+    clauses = [clause.strip(" ,") for clause in re.split(r",\s+|;\s+", text) if clause.strip()]
+    if not clauses:
+        return text
+    kept = clauses[:2]
+    joined = "; ".join(kept)
+    return clean_summary_text(joined)
+
+
 def ticket_summary(ticket: Dict, limit: int = 260) -> str:
     details = issue_detail_text(ticket)
-    title = title_context(ticket)
-    if details:
-        text = details
-        if title and title.lower() not in details.lower():
-            text = f"{title}: {details}"
-    else:
-        text = title or "No summary provided."
-    text = sanitize_slack_text(text)
+    title = concise_title(ticket)
+    detail_sentences = condensed_sentences(details)
+    summary_parts: List[str] = []
+    if title:
+        summary_parts.append(title)
+    if detail_sentences:
+        primary = compress_detail_sentence(detail_sentences[0])
+        if not title or primary.lower() not in title.lower():
+            summary_parts.append(primary)
+        if len(detail_sentences) > 1 and len(summary_parts) < 2:
+            follow_up = compress_detail_sentence(detail_sentences[1])
+            joined = " ".join(summary_parts).lower()
+            if follow_up and follow_up.lower() not in joined:
+                summary_parts.append(follow_up)
+
+    text = ": ".join(
+        [summary_parts[0].rstrip(".")] + ["; ".join(part.rstrip(".") for part in summary_parts[1:])]
+    ).strip() if summary_parts else ""
+    if not text and title:
+        text = clean_summary_text(title)
+    if not text:
+        text = "No summary provided."
     if len(text) <= limit:
-        return text or "No summary provided."
+        return text
     return text[: limit - 1].rstrip() + "..."
+
+
+def likely_code_paths(ticket: Dict) -> List[str]:
+    repo_signal = ticket.get("repo_signal") or {}
+    paths = repo_signal.get("paths") or []
+    filtered = [str(path) for path in paths if not NON_CODE_PATH_RE.search(str(path))]
+    return filtered[:2]
+
+
+def likely_code_area(ticket: Dict) -> str:
+    return ", ".join(likely_code_paths(ticket))
 
 
 def grouped_by_area(tickets: List[Dict]) -> Dict[str, List[Dict]]:
@@ -273,10 +338,11 @@ def markdown_report(payload: Dict) -> str:
                 title = ticket.get("title") or "Untitled ticket"
                 lines.extend(
                     [
-                        f"Reported By: {reporter}",
+                        f"• Reported By: {reporter}",
                         f"Ticket: {issue_link(ticket)} - {title}",
                         f"Summary: {ticket_summary(ticket)}",
-                        f"•• Severity: `{labels.get('severity', 'unknown')}` | Possible root cause: `{labels.get('root_cause', 'unknown')}`",
+                        f"Severity: `{labels.get('severity', 'unknown')}` | Possible root cause: `{labels.get('root_cause', 'unknown')}`",
+                        *([f"Likely code area: `{likely_code_area(ticket)}`"] if likely_code_area(ticket) else []),
                         "",
                     ]
                 )

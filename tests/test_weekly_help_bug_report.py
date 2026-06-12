@@ -326,6 +326,7 @@ class WeeklyHelpBugReportTest(unittest.TestCase):
                         "title": "Profile missing artwork",
                         "description": "issue details: Artwork is missing from profile. links: https://example.com",
                         "reporter": "Support",
+                        "repo_signal": {"paths": ["src/profile/gallery.ts", "docs/profile-runbook.md"]},
                         "suggested_labels": {
                             "severity": "medium",
                             "root_cause": "data-mismatch",
@@ -342,14 +343,59 @@ class WeeklyHelpBugReportTest(unittest.TestCase):
 
         markdown = report.markdown_report(payload)
 
-        self.assertIn("\nReported By: Support\n", markdown)
+        self.assertIn("\n• Reported By: Support\n", markdown)
         self.assertIn("\nTicket: `HELP-1` - Profile missing artwork\n", markdown)
-        self.assertIn("\nSummary: Profile missing artwork: Artwork is missing from profile.\n", markdown)
-        self.assertIn("•• Severity: `medium` | Possible root cause: `data-mismatch`", markdown)
+        self.assertIn("\nSummary: Profile missing artwork: Artwork is missing from profile\n", markdown)
+        self.assertIn("Severity: `medium` | Possible root cause: `data-mismatch`", markdown)
+        self.assertIn("Likely code area: `src/profile/gallery.ts`", markdown)
         self.assertIn("\n\n:bellhop_bell:", markdown)
         self.assertIn("\nTask (1)\n", markdown)
-        self.assertNotIn("• Reported By", markdown)
         self.assertNotIn("Root cause:", markdown)
+        self.assertNotIn("docs/profile-runbook.md", markdown)
+
+    def test_dashboard_and_canvas_share_summary_and_likely_code_area(self):
+        weekly_report = {
+            "metadata": {
+                "generated_at": "2026-06-12T09:00:00-04:00",
+                "since": "2026-06-05T00:00:00-04:00",
+                "until": "2026-06-11T23:59:59-04:00",
+            },
+            "totals": {"inbound": 1, "bugs": 1, "needs_engineering": 1, "low_confidence": 0},
+            "breakdowns": {
+                "issue_type_all": [("bug", 1)],
+                "product_area": [("profile", 1)],
+                "root_cause": [("data-mismatch", 1)],
+            },
+            "service_ticket_counts": [],
+            "window_tickets": [
+                {
+                    "key": "HELP-1",
+                    "title": "[INDEXING ISSUE] @artist - Artwork missing from profile",
+                    "description": "hello issue details: The artwork is missing from the collector profile, but appears on the artwork page. links: https://example.com",
+                    "source_url": "https://example.atlassian.net/browse/HELP-1",
+                    "created_at": "2026-06-06T12:00:00-04:00",
+                    "repo_signal": {"paths": ["src/profile/gallery.ts", "references/profile-note.md", ".env.example"]},
+                    "suggested_labels": {
+                        "issue_type": "bug",
+                        "product_area": "profile",
+                        "severity": "medium",
+                        "root_cause": "data-mismatch",
+                        "needs_engineering": "yes",
+                    },
+                }
+            ],
+        }
+        weekly_report["bug_tickets"] = weekly_report["window_tickets"]
+
+        payload = dashboard.build_dashboard_payload(weekly_report, source_path="data/support_weekly_bug_report.json")
+        canvas_markdown = canvas.build_canvas_markdown(weekly_report, {"tickets": weekly_report["window_tickets"]}, 1)
+
+        detail = payload["snapshot"]["datasets"]["ticket_detail"][0]
+        self.assertEqual(detail["summary"], "Artwork missing from profile: The artwork is missing from the collector profile; but appears on the artwork page")
+        self.assertEqual(detail["likely_code_area"], "src/profile/gallery.ts")
+        self.assertIn("Likely Code Area", canvas_markdown)
+        self.assertIn("src/profile/gallery.ts", canvas_markdown)
+        self.assertNotIn("references/profile-note.md", canvas_markdown)
 
     def test_canvas_markdown_includes_weekly_bug_task_trend(self):
         weekly_report = {
