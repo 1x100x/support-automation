@@ -72,6 +72,24 @@ def slack_canvas_url(result: Dict) -> str:
     return ""
 
 
+def slack_team_id(token: str) -> str:
+    result = slack_api("auth.test", {}, token)
+    team_id = str(result.get("team_id") or "").strip()
+    if not team_id:
+        raise SlackApiError("Slack auth.test did not return team_id.")
+    return team_id
+
+
+def slack_canvas_url_or_construct(result: Dict, *, token: str) -> str:
+    url = slack_canvas_url(result)
+    if url:
+        return url
+    canvas_id = slack_canvas_id(result)
+    if not canvas_id:
+        return ""
+    return f"https://app.slack.com/docs/{slack_team_id(token)}/{canvas_id}"
+
+
 def slack_canvas_id(result: Dict) -> str:
     for key in ("canvas_id", "id", "file_id"):
         if result.get(key):
@@ -202,10 +220,10 @@ def main() -> None:
     if args.mode in {"native", "auto"}:
         try:
             result = create_native_canvas(file_path=file_path, title=args.title, token=token)
-            canvas_url = slack_canvas_url(result)
+            canvas_url = slack_canvas_url_or_construct(result, token=token)
             if not canvas_url:
                 raise RuntimeError(
-                    "Slack created a Canvas response but did not return a URL. "
+                    "Slack created a Canvas response but did not return a URL or canvas_id. "
                     f"Response shape: {safe_response_keys(result)}"
                 )
             post_canvas_link(

@@ -49,13 +49,12 @@ class WeeklyHelpBugReportTest(unittest.TestCase):
                     json.dumps(
                         {
                             "ok": True,
-                            "canvas": {
-                                "id": "F123",
-                                "url": "https://superrare.slack.com/docs/T123/F123",
-                            },
+                            "canvas_id": "F123",
                         }
                     ).encode("utf-8")
                 )
+            if req.full_url.endswith("/auth.test"):
+                return FakeResponse(json.dumps({"ok": True, "team_id": "T123"}).encode("utf-8"))
             if req.full_url.endswith("/chat.postMessage"):
                 return FakeResponse(json.dumps({"ok": True, "ts": "1781553559.999999"}).encode("utf-8"))
             raise AssertionError(f"Unexpected URL: {req.full_url}")
@@ -70,7 +69,7 @@ class WeeklyHelpBugReportTest(unittest.TestCase):
             canvas_upload.post_canvas_link(
                 channel="C123",
                 thread_ts="1781553559.231279",
-                canvas_url=canvas_upload.slack_canvas_url(result),
+                canvas_url=canvas_upload.slack_canvas_url_or_construct(result, token="xoxb-test"),
                 title="Weekly Help Bug Report Dashboard - June 11, 2026",
                 token="xoxb-test",
             )
@@ -78,15 +77,15 @@ class WeeklyHelpBugReportTest(unittest.TestCase):
             canvas_upload.urllib.request.urlopen = old_urlopen
             tmp_path.unlink(missing_ok=True)
 
-        self.assertEqual(len(calls), 2)
+        self.assertEqual(len(calls), 3)
         create_payload = json.loads(calls[0][1].decode("utf-8"))
         self.assertEqual(create_payload["title"], "Weekly Help Bug Report Dashboard - June 11, 2026")
         self.assertEqual(create_payload["document_content"]["type"], "markdown")
         self.assertIn("Native Canvas body", create_payload["document_content"]["markdown"])
-        message_payload = json.loads(calls[1][1].decode("utf-8"))
+        message_payload = json.loads(calls[2][1].decode("utf-8"))
         self.assertEqual(message_payload["channel"], "C123")
         self.assertEqual(message_payload["thread_ts"], "1781553559.231279")
-        self.assertIn("https://superrare.slack.com/docs/T123/F123", message_payload["text"])
+        self.assertIn("https://app.slack.com/docs/T123/F123", message_payload["text"])
 
     def test_canvas_file_upload_uses_slack_external_upload_flow(self):
         tmp_path = Path(tempfile.gettempdir()) / "support-canvas-upload-test.md"
