@@ -23,9 +23,11 @@ import support_triage
 
 
 class WeeklyHelpBugReportTest(unittest.TestCase):
-    def test_native_canvas_create_and_thread_link(self):
+    def test_native_canvas_create_updates_original_report_post(self):
         tmp_path = Path(tempfile.gettempdir()) / "support-native-canvas-test.md"
+        report_path = Path(tempfile.gettempdir()) / "support-native-canvas-report.md"
         tmp_path.write_text("# Summary\n\nNative Canvas body\n", encoding="utf-8")
+        report_path.write_text("*WEEKLY BUG REPORT 6/15/2026*\n\nReport body\n", encoding="utf-8")
         old_urlopen = canvas_upload.urllib.request.urlopen
         calls = []
 
@@ -55,7 +57,7 @@ class WeeklyHelpBugReportTest(unittest.TestCase):
                 )
             if req.full_url.endswith("/auth.test"):
                 return FakeResponse(json.dumps({"ok": True, "team_id": "T123"}).encode("utf-8"))
-            if req.full_url.endswith("/chat.postMessage"):
+            if req.full_url.endswith("/chat.update"):
                 return FakeResponse(json.dumps({"ok": True, "ts": "1781553559.999999"}).encode("utf-8"))
             raise AssertionError(f"Unexpected URL: {req.full_url}")
 
@@ -66,9 +68,10 @@ class WeeklyHelpBugReportTest(unittest.TestCase):
                 title="Weekly Help Bug Report Dashboard - June 11, 2026",
                 token="xoxb-test",
             )
-            canvas_upload.post_canvas_link(
+            canvas_upload.update_report_message_with_canvas(
+                report_markdown_path=report_path,
                 channel="C123",
-                thread_ts="1781553559.231279",
+                message_ts="1781553559.231279",
                 canvas_url=canvas_upload.slack_canvas_url_or_construct(result, token="xoxb-test"),
                 title="Weekly Help Bug Report Dashboard - June 11, 2026",
                 token="xoxb-test",
@@ -76,6 +79,7 @@ class WeeklyHelpBugReportTest(unittest.TestCase):
         finally:
             canvas_upload.urllib.request.urlopen = old_urlopen
             tmp_path.unlink(missing_ok=True)
+            report_path.unlink(missing_ok=True)
 
         self.assertEqual(len(calls), 3)
         create_payload = json.loads(calls[0][1].decode("utf-8"))
@@ -84,7 +88,9 @@ class WeeklyHelpBugReportTest(unittest.TestCase):
         self.assertIn("Native Canvas body", create_payload["document_content"]["markdown"])
         message_payload = json.loads(calls[2][1].decode("utf-8"))
         self.assertEqual(message_payload["channel"], "C123")
-        self.assertEqual(message_payload["thread_ts"], "1781553559.231279")
+        self.assertEqual(message_payload["ts"], "1781553559.231279")
+        self.assertNotIn("thread_ts", message_payload)
+        self.assertIn("WEEKLY BUG REPORT", message_payload["text"])
         self.assertIn("https://app.slack.com/docs/T123/F123", message_payload["text"])
 
     def test_canvas_file_upload_uses_slack_external_upload_flow(self):
