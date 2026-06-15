@@ -22,7 +22,13 @@ Configure these in repository settings:
 - `JIRA_HELP_DASHBOARD_URL` optional
 - `OPENAI_API_KEY` optional, used for cohesive LLM ticket summaries
 
-Use a least-privilege Jira API token and a Slack bot token scoped only for posting to the target channel.
+Use a least-privilege Jira API token and a Slack bot token scoped only for posting to the target channel and creating the weekly Canvas.
+
+Required Slack bot scopes:
+
+- `chat:write`
+- `canvases:write`
+- `files:write`, fallback for uploading the Canvas markdown if native Canvas creation is unavailable
 
 ## GitHub Variables
 
@@ -31,6 +37,7 @@ Optional:
 - `SUPPORT_DASHBOARD_LIMIT`, default `100`
 - `SUPPORT_USE_LLM_SUMMARIES`, default `true` in GitHub Actions
 - `OPENAI_SUMMARY_MODEL`, default `gpt-4.1-mini`
+- `SUPPORT_SLACK_CANVAS_MODE`, default `auto`; use `native`, `file`, or `auto`
 
 ## Manual Runs
 
@@ -86,12 +93,14 @@ Generated files are ignored by Git and uploaded as GitHub Actions artifacts:
 - `data/support_weekly_bug_report.md`
 - `data/support_weekly_bug_report_dashboard.json`
 - `data/support_weekly_bug_report_canvas.md`
+- `data/support_slack_post_result.json`, only when Slack posting runs
 
 ## Security Notes
 
 - The automation does not write to Jira.
 - The automation does not write to GitHub beyond workflow logs and artifacts.
 - Slack posting only happens on scheduled production runs or explicit manual runs with `post_slack=true`.
+- When Slack posting runs, the workflow first tries to create a native Slack Canvas and link it in the report thread. If native Canvas creation fails in `auto` mode, it uploads the Canvas markdown into the thread as a Slack file.
 - Slack-facing summaries redact emails, wallet/contract addresses, and raw URLs.
 - LLM summary requests are redacted before sending, and model output is redacted again before Slack posting.
 - If `OPENAI_API_KEY` is not configured, the report still runs with local heuristic summaries and marks the report metadata accordingly.

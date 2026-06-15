@@ -51,6 +51,8 @@ jobs:
       SUPPORT_BUG_REPORT_MD: data/support_weekly_bug_report.md
       SUPPORT_BUG_REPORT_DASHBOARD: data/support_weekly_bug_report_dashboard.json
       SUPPORT_BUG_REPORT_CANVAS: data/support_weekly_bug_report_canvas.md
+      SUPPORT_SLACK_RESULT_JSON: data/support_slack_post_result.json
+      SUPPORT_SLACK_CANVAS_MODE: ${{ vars.SUPPORT_SLACK_CANVAS_MODE || 'auto' }}
 
     steps:
       - name: Check out repo
@@ -99,5 +101,6 @@ jobs:
             data/support_weekly_bug_report.md
             data/support_weekly_bug_report_dashboard.json
             data/support_weekly_bug_report_canvas.md
+            data/support_slack_post_result.json
           if-no-files-found: ignore
           retention-days: 30

@@ -16,11 +16,139 @@ import generate_support_bug_report as report
 import fetch_jira_help_tickets as fetch_jira
 import generate_support_canvas as canvas
 import generate_help_report_dashboard as dashboard
+import post_slack_canvas_file as canvas_upload
 import run_weekly_help_bug_report as runner
 import support_triage
 
 
 class WeeklyHelpBugReportTest(unittest.TestCase):
+    def test_native_canvas_create_and_thread_link(self):
+        tmp_path = Path("/private/tmp/support-native-canvas-test.md")
+        tmp_path.write_text("# Summary\n\nNative Canvas body\n", encoding="utf-8")
+        old_urlopen = canvas_upload.urllib.request.urlopen
+        calls = []
+
+        class FakeResponse:
+            def __init__(self, body: bytes = b"{}"):
+                self.body = body
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def read(self):
+                return self.body
+
+        def fake_urlopen(req, timeout=30):
+            calls.append((req.full_url, req.data, dict(req.header_items())))
+            if req.full_url.endswith("/canvases.create"):
+                return FakeResponse(
+                    json.dumps(
+                        {
+                            "ok": True,
+                            "canvas": {
+                                "id": "F123",
+                                "url": "https://superrare.slack.com/docs/T123/F123",
+                            },
+                        }
+                    ).encode("utf-8")
+                )
+            if req.full_url.endswith("/chat.postMessage"):
+                return FakeResponse(json.dumps({"ok": True, "ts": "1781553559.999999"}).encode("utf-8"))
+            raise AssertionError(f"Unexpected URL: {req.full_url}")
+
+        try:
+            canvas_upload.urllib.request.urlopen = fake_urlopen
+            result = canvas_upload.create_native_canvas(
+                file_path=tmp_path,
+                title="Weekly Help Bug Report Dashboard - June 11, 2026",
+                token="xoxb-test",
+            )
+            canvas_upload.post_canvas_link(
+                channel="C123",
+                thread_ts="1781553559.231279",
+                canvas_url=canvas_upload.slack_canvas_url(result),
+                title="Weekly Help Bug Report Dashboard - June 11, 2026",
+                token="xoxb-test",
+            )
+        finally:
+            canvas_upload.urllib.request.urlopen = old_urlopen
+            tmp_path.unlink(missing_ok=True)
+
+        self.assertEqual(len(calls), 2)
+        create_payload = json.loads(calls[0][1].decode("utf-8"))
+        self.assertEqual(create_payload["title"], "Weekly Help Bug Report Dashboard - June 11, 2026")
+        self.assertEqual(create_payload["document_content"]["type"], "markdown")
+        self.assertIn("Native Canvas body", create_payload["document_content"]["markdown"])
+        message_payload = json.loads(calls[1][1].decode("utf-8"))
+        self.assertEqual(message_payload["channel"], "C123")
+        self.assertEqual(message_payload["thread_ts"], "1781553559.231279")
+        self.assertIn("https://superrare.slack.com/docs/T123/F123", message_payload["text"])
+
+    def test_canvas_file_upload_uses_slack_external_upload_flow(self):
+        tmp_path = Path("/private/tmp/support-canvas-upload-test.md")
+        tmp_path.write_text("# Summary\n\nCanvas body\n", encoding="utf-8")
+        old_urlopen = canvas_upload.urllib.request.urlopen
+        calls = []
+
+        class FakeResponse:
+            def __init__(self, body: bytes = b"{}"):
+                self.body = body
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def read(self):
+                return self.body
+
+        def fake_urlopen(req, timeout=30):
+            calls.append((req.full_url, req.data, dict(req.header_items())))
+            if req.full_url.endswith("/files.getUploadURLExternal"):
+                return FakeResponse(
+                    json.dumps(
+                        {
+                            "ok": True,
+                            "upload_url": "https://upload.slack.test/file",
+                            "file_id": "F123",
+                        }
+                    ).encode("utf-8")
+                )
+            if req.full_url == "https://upload.slack.test/file":
+                return FakeResponse(b"")
+            if req.full_url.endswith("/files.completeUploadExternal"):
+                return FakeResponse(json.dumps({"ok": True, "files": [{"id": "F123"}]}).encode("utf-8"))
+            raise AssertionError(f"Unexpected URL: {req.full_url}")
+
+        try:
+            canvas_upload.urllib.request.urlopen = fake_urlopen
+            result = canvas_upload.upload_canvas_file(
+                file_path=tmp_path,
+                title="Weekly Help Bug Report Dashboard - June 11, 2026",
+                channel="C123",
+                thread_ts="1781553559.231279",
+                initial_comment="Canvas dashboard",
+                token="xoxb-test",
+            )
+        finally:
+            canvas_upload.urllib.request.urlopen = old_urlopen
+            tmp_path.unlink(missing_ok=True)
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(len(calls), 3)
+        get_upload_payload = json.loads(calls[0][1].decode("utf-8"))
+        self.assertEqual(get_upload_payload["filename"], "support-canvas-upload-test.md")
+        self.assertGreater(get_upload_payload["length"], 0)
+        self.assertEqual(calls[1][1], b"# Summary\n\nCanvas body\n")
+        complete_payload = json.loads(calls[2][1].decode("utf-8"))
+        self.assertEqual(complete_payload["channel_id"], "C123")
+        self.assertEqual(complete_payload["thread_ts"], "1781553559.231279")
+        self.assertEqual(complete_payload["files"], [{"id": "F123", "title": "Weekly Help Bug Report Dashboard - June 11, 2026"}])
+
     def test_ticket_summary_prefers_llm_summary(self):
         summary = report.ticket_summary(
             {
