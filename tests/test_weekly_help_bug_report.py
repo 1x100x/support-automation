@@ -1,5 +1,6 @@
 import sys
 import json
+import tempfile
 import unittest
 import urllib.error
 from contextlib import redirect_stdout
@@ -23,7 +24,7 @@ import support_triage
 
 class WeeklyHelpBugReportTest(unittest.TestCase):
     def test_native_canvas_create_and_thread_link(self):
-        tmp_path = Path("/private/tmp/support-native-canvas-test.md")
+        tmp_path = Path(tempfile.gettempdir()) / "support-native-canvas-test.md"
         tmp_path.write_text("# Summary\n\nNative Canvas body\n", encoding="utf-8")
         old_urlopen = canvas_upload.urllib.request.urlopen
         calls = []
@@ -88,7 +89,7 @@ class WeeklyHelpBugReportTest(unittest.TestCase):
         self.assertIn("https://superrare.slack.com/docs/T123/F123", message_payload["text"])
 
     def test_canvas_file_upload_uses_slack_external_upload_flow(self):
-        tmp_path = Path("/private/tmp/support-canvas-upload-test.md")
+        tmp_path = Path(tempfile.gettempdir()) / "support-canvas-upload-test.md"
         tmp_path.write_text("# Summary\n\nCanvas body\n", encoding="utf-8")
         old_urlopen = canvas_upload.urllib.request.urlopen
         calls = []
