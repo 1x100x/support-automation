@@ -10,6 +10,8 @@ import urllib.request
 from pathlib import Path
 from typing import Dict
 
+from generate_support_bug_report import slack_text_from_report
+
 
 SLACK_API_BASE = "https://slack.com/api"
 
@@ -136,17 +138,32 @@ def create_native_canvas(*, file_path: Path, title: str, token: str) -> Dict:
     )
 
 
-def post_canvas_link(*, channel: str, thread_ts: str, canvas_url: str, title: str, token: str) -> Dict:
-    text = f"Canvas dashboard: <{canvas_url}|{title}>"
+def canvas_link_line(canvas_url: str, title: str) -> str:
+    return f"Canvas dashboard: <{canvas_url}|{title}>"
+
+
+def update_report_message_with_canvas(
+    *,
+    report_markdown_path: Path,
+    channel: str,
+    message_ts: str,
+    canvas_url: str,
+    title: str,
+    token: str,
+) -> Dict:
+    markdown = report_markdown_path.read_text(encoding="utf-8")
+    text = slack_text_from_report(markdown)
+    link_line = canvas_link_line(canvas_url, title)
+    if link_line not in text:
+        text = f"{text.rstrip()}\n\n{link_line}"
     payload = {
         "channel": channel,
+        "ts": message_ts,
         "text": text,
         "unfurl_links": True,
         "unfurl_media": True,
     }
-    if thread_ts:
-        payload["thread_ts"] = thread_ts
-    return slack_api("chat.postMessage", payload, token)
+    return slack_api("chat.update", payload, token)
 
 
 def upload_canvas_file(
@@ -189,6 +206,7 @@ def read_slack_result(path: Path) -> Dict:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Upload generated Canvas markdown to Slack.")
     parser.add_argument("--file", required=True, help="Canvas markdown file to upload.")
+    parser.add_argument("--report-md", required=True, help="Slack report Markdown used to update the original post.")
     parser.add_argument("--slack-result-json", required=True, help="JSON output from the Slack report post.")
     parser.add_argument("--title", required=True, help="Slack file title.")
     parser.add_argument(
@@ -226,14 +244,15 @@ def main() -> None:
                     "Slack created a Canvas response but did not return a URL or canvas_id. "
                     f"Response shape: {safe_response_keys(result)}"
                 )
-            post_canvas_link(
+            update_report_message_with_canvas(
+                report_markdown_path=Path(args.report_md),
                 channel=channel,
-                thread_ts=thread_ts,
+                message_ts=thread_ts,
                 canvas_url=canvas_url,
                 title=args.title,
                 token=token,
             )
-            print(f"Created native Slack Canvas and linked it in channel {channel}: {canvas_url}")
+            print(f"Created native Slack Canvas and updated original Slack report in channel {channel}: {canvas_url}")
             write_status(
                 args.status_output,
                 {

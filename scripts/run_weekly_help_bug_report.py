@@ -306,6 +306,8 @@ def main() -> None:
                 "scripts/post_slack_canvas_file.py",
                 "--file",
                 args.canvas_output,
+                "--report-md",
+                args.report_md,
                 "--slack-result-json",
                 args.slack_result_output,
                 "--title",
