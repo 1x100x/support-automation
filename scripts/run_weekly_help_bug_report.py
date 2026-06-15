@@ -109,6 +109,7 @@ def print_preflight(args: argparse.Namespace, *, jql: str, since: datetime, repo
     print(f"- JSON output: {args.report_json}")
     print(f"- Dashboard output: {args.dashboard_output}")
     print(f"- Canvas output: {getattr(args, 'canvas_output', 'data/support_weekly_bug_report_canvas.md')}")
+    print(f"- Slack result output: {getattr(args, 'slack_result_output', 'data/support_slack_post_result.json')}")
     if os.getenv("SUPPORT_USE_LLM_SUMMARIES", "").lower() in {"1", "true", "yes"}:
         print(f"- LLM summaries: enabled ({env_status('OPENAI_API_KEY')})")
     else:
@@ -167,6 +168,10 @@ def main() -> None:
     parser.add_argument(
         "--canvas-output",
         default=os.getenv("SUPPORT_BUG_REPORT_CANVAS", "data/support_weekly_bug_report_canvas.md"),
+    )
+    parser.add_argument(
+        "--slack-result-output",
+        default=os.getenv("SUPPORT_SLACK_RESULT_JSON", "data/support_slack_post_result.json"),
     )
     parser.add_argument("--limit", type=int, default=int(os.getenv("SUPPORT_DASHBOARD_LIMIT", "100")))
     parser.add_argument("--jql", default="", help="Override the generated Help-board Friday-window JQL.")
@@ -254,7 +259,15 @@ def main() -> None:
         channel = args.slack_channel or ("" if args.dry_run else require_env("SLACK_REPORT_CHANNEL_ID"))
         if not args.dry_run:
             require_env("SLACK_BOT_TOKEN")
-        report_command.extend(["--post-slack", "--slack-channel", channel])
+        report_command.extend(
+            [
+                "--post-slack",
+                "--slack-channel",
+                channel,
+                "--slack-result-output",
+                args.slack_result_output,
+            ]
+        )
 
     run_step(report_command, dry_run=args.dry_run)
     run_step(
@@ -281,6 +294,22 @@ def main() -> None:
         ],
         dry_run=args.dry_run,
     )
+    if args.post_slack:
+        run_step(
+            [
+                sys.executable,
+                "scripts/post_slack_canvas_file.py",
+                "--file",
+                args.canvas_output,
+                "--slack-result-json",
+                args.slack_result_output,
+                "--title",
+                f"Weekly Help Bug Report Dashboard - {report_date.strftime('%B')} {report_date.day}, {report_date.year}",
+                "--initial-comment",
+                "Canvas dashboard for this weekly Help bug report.",
+            ],
+            dry_run=args.dry_run,
+        )
     if not args.dry_run:
         print(f"Ready to review/share: {args.report_md}")
         print(f"Ready to render dashboard: {args.dashboard_output}")

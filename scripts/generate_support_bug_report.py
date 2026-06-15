@@ -703,6 +703,11 @@ def main() -> None:
         help="Slack channel ID for posting. Defaults to SLACK_REPORT_CHANNEL_ID.",
     )
     parser.add_argument(
+        "--slack-result-output",
+        default=os.getenv("SUPPORT_SLACK_RESULT_JSON", ""),
+        help="Optional JSON path for the Slack post channel and timestamp.",
+    )
+    parser.add_argument(
         "--use-llm-summaries",
         action="store_true",
         help="Use OPENAI_API_KEY to generate cohesive ticket summaries before falling back to local heuristics.",
@@ -727,6 +732,10 @@ def main() -> None:
     print(f"Wrote bug report Markdown to {md_path}")
     if args.post_slack:
         result = post_to_slack(markdown, args.slack_channel.strip())
+        if args.slack_result_output:
+            result_path = Path(args.slack_result_output)
+            result_path.parent.mkdir(parents=True, exist_ok=True)
+            result_path.write_text(json.dumps(result, indent=2), encoding="utf-8")
         print(f"Posted bug report to Slack channel {result['channel']} at {result['ts']}")
 
 
