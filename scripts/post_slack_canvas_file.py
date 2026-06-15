@@ -138,6 +138,33 @@ def create_native_canvas(*, file_path: Path, title: str, token: str) -> Dict:
     )
 
 
+def share_canvas_with_channel(*, canvas_id: str, channel: str, token: str) -> Dict:
+    attempts = [
+        {
+            "canvas_id": canvas_id,
+            "access": [
+                {
+                    "type": "channel",
+                    "channel_id": channel,
+                    "permission": "read",
+                }
+            ],
+        },
+        {
+            "canvas_id": canvas_id,
+            "channel_ids": [channel],
+            "permission": "read",
+        },
+    ]
+    errors = []
+    for payload in attempts:
+        try:
+            return slack_api("canvases.access.set", payload, token)
+        except SlackApiError as exc:
+            errors.append(str(exc))
+    raise SlackApiError("; ".join(errors))
+
+
 def canvas_link_line(canvas_url: str, title: str) -> str:
     return f"Canvas dashboard: <{canvas_url}|{title}>"
 
@@ -244,6 +271,10 @@ def main() -> None:
                     "Slack created a Canvas response but did not return a URL or canvas_id. "
                     f"Response shape: {safe_response_keys(result)}"
                 )
+            canvas_id = slack_canvas_id(result)
+            access_result = {}
+            if canvas_id:
+                access_result = share_canvas_with_channel(canvas_id=canvas_id, channel=channel, token=token)
             update_report_message_with_canvas(
                 report_markdown_path=Path(args.report_md),
                 channel=channel,
@@ -261,7 +292,8 @@ def main() -> None:
                     "channel": channel,
                     "thread_ts": thread_ts,
                     "canvas_url": canvas_url,
-                    "canvas_id": slack_canvas_id(result),
+                    "canvas_id": canvas_id,
+                    "access_set": bool(access_result.get("ok")),
                 },
             )
             return
