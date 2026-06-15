@@ -59,7 +59,7 @@ def upload_bytes(upload_url: str, file_path: Path) -> None:
             response.read()
     except urllib.error.HTTPError as exc:
         body = exc.read().decode("utf-8", errors="replace")
-        raise SystemExit(f"Slack file content upload failed with HTTP {exc.code}: {body}") from exc
+        raise SlackApiError(f"Slack file content upload failed with HTTP {exc.code}: {body}") from exc
 
 
 def slack_canvas_url(result: Dict) -> str:
@@ -70,6 +70,35 @@ def slack_canvas_url(result: Dict) -> str:
         if canvas.get(key):
             return str(canvas[key])
     return ""
+
+
+def slack_canvas_id(result: Dict) -> str:
+    for key in ("canvas_id", "id", "file_id"):
+        if result.get(key):
+            return str(result[key])
+    canvas = result.get("canvas") or {}
+    for key in ("id", "canvas_id", "file_id"):
+        if canvas.get(key):
+            return str(canvas[key])
+    return ""
+
+
+def safe_response_keys(result: Dict) -> Dict:
+    canvas = result.get("canvas") or {}
+    return {
+        "top_level_keys": sorted(str(key) for key in result.keys()),
+        "canvas_keys": sorted(str(key) for key in canvas.keys()) if isinstance(canvas, dict) else [],
+        "canvas_id": slack_canvas_id(result),
+        "canvas_url_present": bool(slack_canvas_url(result)),
+    }
+
+
+def write_status(path: str, payload: Dict) -> None:
+    if not path:
+        return
+    status_path = Path(path)
+    status_path.parent.mkdir(parents=True, exist_ok=True)
+    status_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
 def create_native_canvas(*, file_path: Path, title: str, token: str) -> Dict:
@@ -155,6 +184,11 @@ def main() -> None:
         default="Canvas dashboard for this weekly Help bug report.",
         help="Comment shown with the uploaded file.",
     )
+    parser.add_argument(
+        "--status-output",
+        default=os.getenv("SUPPORT_SLACK_CANVAS_RESULT_JSON", ""),
+        help="Optional JSON path for Slack Canvas/upload outcome metadata.",
+    )
     args = parser.parse_args()
 
     token = require_env("SLACK_BOT_TOKEN")
@@ -170,7 +204,10 @@ def main() -> None:
             result = create_native_canvas(file_path=file_path, title=args.title, token=token)
             canvas_url = slack_canvas_url(result)
             if not canvas_url:
-                raise RuntimeError("Slack did not return a canvas URL.")
+                raise RuntimeError(
+                    "Slack created a Canvas response but did not return a URL. "
+                    f"Response shape: {safe_response_keys(result)}"
+                )
             post_canvas_link(
                 channel=channel,
                 thread_ts=thread_ts,
@@ -179,22 +216,63 @@ def main() -> None:
                 token=token,
             )
             print(f"Created native Slack Canvas and linked it in channel {channel}: {canvas_url}")
+            write_status(
+                args.status_output,
+                {
+                    "ok": True,
+                    "mode": "native",
+                    "channel": channel,
+                    "thread_ts": thread_ts,
+                    "canvas_url": canvas_url,
+                    "canvas_id": slack_canvas_id(result),
+                },
+            )
             return
         except Exception as exc:
             if args.mode == "native":
                 raise
-            print(f"::warning title=Native Slack Canvas failed::Falling back to file upload. Error: {exc}")
+            native_error = str(exc)
+            print(f"::warning title=Native Slack Canvas failed::Falling back to file upload. Error: {native_error}")
 
-    result = upload_canvas_file(
-        file_path=file_path,
-        title=args.title,
-        channel=channel,
-        thread_ts=thread_ts,
-        initial_comment=args.initial_comment,
-        token=token,
-    )
+    try:
+        result = upload_canvas_file(
+            file_path=file_path,
+            title=args.title,
+            channel=channel,
+            thread_ts=thread_ts,
+            initial_comment=args.initial_comment,
+            token=token,
+        )
+    except Exception as exc:
+        message = str(exc)
+        print(f"::warning title=Slack Canvas file upload failed::{message}")
+        write_status(
+            args.status_output,
+            {
+                "ok": False,
+                "mode": args.mode,
+                "channel": channel,
+                "thread_ts": thread_ts,
+                "native_error": locals().get("native_error", ""),
+                "file_error": message,
+            },
+        )
+        if args.mode == "auto":
+            return
+        raise
     files = result.get("files") or []
     file_id = files[0].get("id") if files else "unknown"
+    write_status(
+        args.status_output,
+        {
+            "ok": True,
+            "mode": "file",
+            "channel": channel,
+            "thread_ts": thread_ts,
+            "file_id": file_id,
+            "native_error": locals().get("native_error", ""),
+        },
+    )
     print(f"Uploaded Canvas markdown to Slack channel {channel} in thread {thread_ts or 'none'} as file {file_id}")
 
 

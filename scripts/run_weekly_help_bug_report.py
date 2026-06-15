@@ -110,6 +110,7 @@ def print_preflight(args: argparse.Namespace, *, jql: str, since: datetime, repo
     print(f"- Dashboard output: {args.dashboard_output}")
     print(f"- Canvas output: {getattr(args, 'canvas_output', 'data/support_weekly_bug_report_canvas.md')}")
     print(f"- Slack result output: {getattr(args, 'slack_result_output', 'data/support_slack_post_result.json')}")
+    print(f"- Slack Canvas result output: {getattr(args, 'slack_canvas_result_output', 'data/support_slack_canvas_result.json')}")
     if os.getenv("SUPPORT_USE_LLM_SUMMARIES", "").lower() in {"1", "true", "yes"}:
         print(f"- LLM summaries: enabled ({env_status('OPENAI_API_KEY')})")
     else:
@@ -172,6 +173,10 @@ def main() -> None:
     parser.add_argument(
         "--slack-result-output",
         default=os.getenv("SUPPORT_SLACK_RESULT_JSON", "data/support_slack_post_result.json"),
+    )
+    parser.add_argument(
+        "--slack-canvas-result-output",
+        default=os.getenv("SUPPORT_SLACK_CANVAS_RESULT_JSON", "data/support_slack_canvas_result.json"),
     )
     parser.add_argument("--limit", type=int, default=int(os.getenv("SUPPORT_DASHBOARD_LIMIT", "100")))
     parser.add_argument("--jql", default="", help="Override the generated Help-board Friday-window JQL.")
@@ -307,6 +312,8 @@ def main() -> None:
                 f"Weekly Help Bug Report Dashboard - {report_date.strftime('%B')} {report_date.day}, {report_date.year}",
                 "--initial-comment",
                 "Canvas dashboard for this weekly Help bug report.",
+                "--status-output",
+                args.slack_canvas_result_output,
             ],
             dry_run=args.dry_run,
         )
