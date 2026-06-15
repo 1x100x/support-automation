@@ -94,6 +94,7 @@ Generated files are ignored by Git and uploaded as GitHub Actions artifacts:
 - `data/support_weekly_bug_report_dashboard.json`
 - `data/support_weekly_bug_report_canvas.md`
 - `data/support_slack_post_result.json`, only when Slack posting runs
+- `data/support_slack_canvas_result.json`, only when Slack Canvas/file posting runs
 
 ## Security Notes
 
@@ -101,6 +102,7 @@ Generated files are ignored by Git and uploaded as GitHub Actions artifacts:
 - The automation does not write to GitHub beyond workflow logs and artifacts.
 - Slack posting only happens on scheduled production runs or explicit manual runs with `post_slack=true`.
 - When Slack posting runs, the workflow first tries to create a native Slack Canvas and link it in the report thread. If native Canvas creation fails in `auto` mode, it uploads the Canvas markdown into the thread as a Slack file.
+- If Canvas/file posting reports `missing_scope`, add the missing Slack bot scope and reinstall the Slack app so the existing `SLACK_BOT_TOKEN` receives the new permission.
 - Slack-facing summaries redact emails, wallet/contract addresses, and raw URLs.
 - LLM summary requests are redacted before sending, and model output is redacted again before Slack posting.
 - If `OPENAI_API_KEY` is not configured, the report still runs with local heuristic summaries and marks the report metadata accordingly.

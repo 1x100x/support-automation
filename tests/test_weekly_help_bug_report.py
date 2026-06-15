@@ -150,6 +150,12 @@ class WeeklyHelpBugReportTest(unittest.TestCase):
         self.assertEqual(complete_payload["thread_ts"], "1781553559.231279")
         self.assertEqual(complete_payload["files"], [{"id": "F123", "title": "Weekly Help Bug Report Dashboard - June 11, 2026"}])
 
+    def test_canvas_status_records_missing_file_scope_without_secret_values(self):
+        error = canvas_upload.SlackApiError("Slack files.getUploadURLExternal failed: missing_scope")
+
+        self.assertIn("missing_scope", str(error))
+        self.assertNotIn("xoxb-", str(error))
+
     def test_ticket_summary_prefers_llm_summary(self):
         summary = report.ticket_summary(
             {
