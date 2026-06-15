@@ -165,6 +165,15 @@ def share_canvas_with_channel(*, canvas_id: str, channel: str, token: str) -> Di
     raise SlackApiError("; ".join(errors))
 
 
+def try_share_canvas_with_channel(*, canvas_id: str, channel: str, token: str) -> tuple[Dict, str]:
+    if not canvas_id:
+        return {}, "Slack Canvas response did not include a canvas_id."
+    try:
+        return share_canvas_with_channel(canvas_id=canvas_id, channel=channel, token=token), ""
+    except SlackApiError as exc:
+        return {}, str(exc)
+
+
 def canvas_link_line(canvas_url: str, title: str) -> str:
     return f"Canvas dashboard: <{canvas_url}|{title}>"
 
@@ -273,8 +282,18 @@ def main() -> None:
                 )
             canvas_id = slack_canvas_id(result)
             access_result = {}
+            access_error = ""
             if canvas_id:
-                access_result = share_canvas_with_channel(canvas_id=canvas_id, channel=channel, token=token)
+                access_result, access_error = try_share_canvas_with_channel(
+                    canvas_id=canvas_id,
+                    channel=channel,
+                    token=token,
+                )
+                if access_error:
+                    print(
+                        "::warning title=Slack Canvas access share failed::"
+                        f"Created Canvas but could not grant channel access. Error: {access_error}"
+                    )
             update_report_message_with_canvas(
                 report_markdown_path=Path(args.report_md),
                 channel=channel,
@@ -287,13 +306,15 @@ def main() -> None:
             write_status(
                 args.status_output,
                 {
-                    "ok": True,
+                    "ok": not access_error,
                     "mode": "native",
                     "channel": channel,
                     "thread_ts": thread_ts,
                     "canvas_url": canvas_url,
                     "canvas_id": canvas_id,
                     "access_set": bool(access_result.get("ok")),
+                    "access_error": access_error,
+                    "post_updated": True,
                 },
             )
             return
