@@ -47,9 +47,10 @@ Recommended rollout:
 
 1. Run with `dry_run=true` and `post_slack=false`.
 2. Review the uploaded Markdown and JSON artifacts.
-3. Test with `post_slack=true` against a private/test channel.
-4. Switch `SLACK_REPORT_CHANNEL_ID` to the production Slack channel.
-5. Let the Friday schedule run.
+3. Run with `slack_smoke_test=true` against a private/test channel to validate Slack post, Canvas creation, Canvas access, and original-post update without Jira or OpenAI calls.
+4. Test the full report with `post_slack=true` against the private/test channel.
+5. Switch `SLACK_REPORT_CHANNEL_ID` to the production Slack channel.
+6. Let the Friday schedule run.
 
 ## Local Development
 
@@ -83,6 +84,12 @@ Post to Slack locally only when you intentionally want to test posting:
 python scripts/run_weekly_help_bug_report.py --post-slack
 ```
 
+Run a Slack-only Canvas smoke test without fetching Jira tickets or calling OpenAI:
+
+```bash
+python scripts/run_slack_canvas_smoke_test.py
+```
+
 ## Outputs
 
 Generated files are ignored by Git and uploaded as GitHub Actions artifacts:
@@ -95,12 +102,17 @@ Generated files are ignored by Git and uploaded as GitHub Actions artifacts:
 - `data/support_weekly_bug_report_canvas.md`
 - `data/support_slack_post_result.json`, only when Slack posting runs
 - `data/support_slack_canvas_result.json`, only when Slack Canvas/file posting runs
+- `data/support_slack_smoke_report.md`, only when the Slack smoke test runs
+- `data/support_slack_smoke_canvas.md`, only when the Slack smoke test runs
+- `data/support_slack_smoke_post_result.json`, only when the Slack smoke test posts
+- `data/support_slack_smoke_canvas_result.json`, only when the Slack smoke test posts
 
 ## Security Notes
 
 - The automation does not write to Jira.
 - The automation does not write to GitHub beyond workflow logs and artifacts.
 - Slack posting only happens on scheduled production runs or explicit manual runs with `post_slack=true`.
+- The Slack smoke test only posts a synthetic test message and Canvas; it does not fetch Jira data or call OpenAI.
 - When Slack posting runs, the workflow first tries to create a native Slack Canvas, share it with the report channel, and update the original report post with the Canvas link. If native Canvas creation fails in `auto` mode, it uploads the Canvas markdown into the thread as a Slack file.
 - If Canvas/file posting reports `missing_scope`, add the missing Slack bot scope and reinstall the Slack app so the existing `SLACK_BOT_TOKEN` receives the new permission.
 - Slack-facing summaries redact emails, wallet/contract addresses, and raw URLs.
