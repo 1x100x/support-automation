@@ -249,8 +249,8 @@ def try_share_canvas_with_channel(*, canvas_id: str, channel: str, token: str) -
         return {}, str(exc)
 
 
-def canvas_link_line(title: str) -> str:
-    return f"Canvas dashboard: {title} shared in this channel."
+def canvas_link_line(canvas_url: str, title: str) -> str:
+    return f"Canvas dashboard: <{canvas_url}|Open {title}>"
 
 
 def update_report_message_with_canvas(
@@ -258,12 +258,13 @@ def update_report_message_with_canvas(
     report_markdown_path: Path,
     channel: str,
     message_ts: str,
+    canvas_url: str,
     title: str,
     token: str,
 ) -> Dict:
     markdown = report_markdown_path.read_text(encoding="utf-8")
     text = slack_text_from_report(markdown)
-    link_line = canvas_link_line(title)
+    link_line = canvas_link_line(canvas_url, title)
     if link_line not in text:
         text = f"{text.rstrip()}\n\n{link_line}"
     payload = {
@@ -374,6 +375,7 @@ def main() -> None:
                 report_markdown_path=Path(args.report_md),
                 channel=channel,
                 message_ts=thread_ts,
+                canvas_url=canvas_url,
                 title=args.title,
                 token=token,
             )
