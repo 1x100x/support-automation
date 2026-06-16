@@ -135,7 +135,7 @@ def populate_native_canvas(*, canvas_id: str, content: str, token: str) -> Dict:
             "canvas_id": canvas_id,
             "changes": [
                 {
-                    "operation": "replace",
+                    "operation": "insert_at_start",
                     "document_content": canvas_document_content(content),
                 }
             ],
@@ -150,7 +150,6 @@ def create_native_canvas(*, file_path: Path, title: str, token: str, channel: st
         raise SystemExit(f"Canvas file is empty: {file_path}")
     payload = {
         "title": title,
-        "document_content": canvas_document_content(content),
     }
     if channel:
         payload["channel_id"] = channel
@@ -356,6 +355,7 @@ def main() -> None:
                     f"Response shape: {safe_response_keys(result)}"
             )
             canvas_id = slack_canvas_id(result)
+            content_edit_result = result.get("content_edit") or {}
             access_result = {}
             access_error = ""
             share_result = {}
@@ -392,6 +392,7 @@ def main() -> None:
                     "canvas_url": canvas_url,
                     "canvas_id": canvas_id,
                     "channel_tab_created": True,
+                    "content_edit_ok": bool(content_edit_result.get("ok")),
                     "access_set": bool(access_result.get("ok")),
                     "access_error": access_error,
                     "shared_card": bool(share_result.get("ok")),
