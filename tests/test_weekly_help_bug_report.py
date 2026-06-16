@@ -79,6 +79,8 @@ class WeeklyHelpBugReportTest(unittest.TestCase):
                         }
                     ).encode("utf-8")
                 )
+            if req.full_url.endswith("/canvases.edit"):
+                return FakeResponse(json.dumps({"ok": True}).encode("utf-8"))
             if req.full_url.endswith("/auth.test"):
                 return FakeResponse(json.dumps({"ok": True, "team_id": "T123"}).encode("utf-8"))
             if req.full_url.endswith("/canvases.access.set"):
@@ -93,6 +95,7 @@ class WeeklyHelpBugReportTest(unittest.TestCase):
                 file_path=tmp_path,
                 title="Weekly Help Bug Report Dashboard - June 11, 2026",
                 token="xoxb-test",
+                channel="C123",
             )
             canvas_upload.share_canvas_with_channel(
                 canvas_id=canvas_upload.slack_canvas_id(result),
@@ -112,15 +115,20 @@ class WeeklyHelpBugReportTest(unittest.TestCase):
             tmp_path.unlink(missing_ok=True)
             report_path.unlink(missing_ok=True)
 
-        self.assertEqual(len(calls), 4)
+        self.assertEqual(len(calls), 5)
         create_payload = json.loads(calls[0][1].decode("utf-8"))
         self.assertEqual(create_payload["title"], "Weekly Help Bug Report Dashboard - June 11, 2026")
+        self.assertEqual(create_payload["channel_id"], "C123")
         self.assertEqual(create_payload["document_content"]["type"], "markdown")
         self.assertIn("Native Canvas body", create_payload["document_content"]["markdown"])
-        access_payload = json.loads(calls[1][1].decode("utf-8"))
+        edit_payload = json.loads(calls[1][1].decode("utf-8"))
+        self.assertEqual(edit_payload["canvas_id"], "F123")
+        self.assertEqual(edit_payload["changes"][0]["operation"], "replace")
+        self.assertIn("Native Canvas body", edit_payload["changes"][0]["document_content"]["markdown"])
+        access_payload = json.loads(calls[2][1].decode("utf-8"))
         self.assertEqual(access_payload["canvas_id"], "F123")
         self.assertEqual(access_payload["access"][0]["channel_id"], "C123")
-        message_payload = json.loads(calls[3][1].decode("utf-8"))
+        message_payload = json.loads(calls[4][1].decode("utf-8"))
         self.assertEqual(message_payload["channel"], "C123")
         self.assertEqual(message_payload["ts"], "1781553559.231279")
         self.assertNotIn("thread_ts", message_payload)
