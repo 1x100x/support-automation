@@ -18,6 +18,7 @@ Configure these in repository settings:
 - `JIRA_EMAIL`
 - `JIRA_API_TOKEN`
 - `SLACK_BOT_TOKEN`
+- `SLACK_USER_TOKEN` optional, only if you want native Canvas card sharing with a user-authorized token
 - `SLACK_REPORT_CHANNEL_ID`
 - `JIRA_HELP_DASHBOARD_URL` optional
 - `OPENAI_API_KEY` optional, used for cohesive LLM ticket summaries
@@ -29,6 +30,10 @@ Required Slack bot scopes:
 - `chat:write`
 - `canvases:write`
 - `files:write`, fallback for uploading the Canvas markdown if native Canvas creation is unavailable
+
+Optional Slack user token:
+
+- `SLACK_USER_TOKEN` can be added if native Canvas card sharing is required. The workflow still uses `SLACK_BOT_TOKEN` for the report message, but uses `SLACK_USER_TOKEN` for Canvas create/edit/access/share calls. Treat this as more sensitive than the bot token because it acts as the authorizing Slack user; use a dedicated service/user account if possible.
 
 ## GitHub Variables
 
@@ -113,7 +118,7 @@ Generated files are ignored by Git and uploaded as GitHub Actions artifacts:
 - The automation does not write to GitHub beyond workflow logs and artifacts.
 - Slack posting only happens on scheduled production runs or explicit manual runs with `post_slack=true`.
 - The Slack smoke test only posts a synthetic test message and Canvas; it does not fetch Jira data or call OpenAI.
-- When Slack posting runs, the workflow creates a native Slack Canvas as a channel tab, writes the generated Canvas markdown into it, grants channel access, and updates the original report post with a plain note that the Canvas dashboard was shared in the channel. Slack currently rejects `canvases.share` for the bot token type with `not_allowed_token_type`, so the bot-token path intentionally does not try to post a separate native Canvas card. If native Canvas creation fails in `auto` mode, it uploads the Canvas markdown into the thread as a Slack file.
+- When Slack posting runs, the workflow creates a native Slack Canvas as a channel tab, writes the generated Canvas markdown into it, grants channel access, and updates the original report post with a Canvas dashboard link. Slack rejects `canvases.share` for the bot token type with `not_allowed_token_type`, so native Canvas card sharing is attempted only when `SLACK_USER_TOKEN` is configured. If native Canvas creation fails in `auto` mode, it uploads the Canvas markdown into the thread as a Slack file.
 - If Canvas/file posting reports `missing_scope`, add the missing Slack bot scope and reinstall the Slack app so the existing `SLACK_BOT_TOKEN` receives the new permission.
 - Slack-facing summaries redact emails, wallet/contract addresses, and raw URLs.
 - LLM summary requests are redacted before sending, and model output is redacted again before Slack posting.
