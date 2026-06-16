@@ -121,21 +121,48 @@ def write_status(path: str, payload: Dict) -> None:
     status_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
-def create_native_canvas(*, file_path: Path, title: str, token: str) -> Dict:
-    content = file_path.read_text(encoding="utf-8")
-    if not content.strip():
-        raise SystemExit(f"Canvas file is empty: {file_path}")
+def canvas_document_content(content: str) -> Dict:
+    return {
+        "type": "markdown",
+        "markdown": content,
+    }
+
+
+def populate_native_canvas(*, canvas_id: str, content: str, token: str) -> Dict:
     return slack_api(
-        "canvases.create",
+        "canvases.edit",
         {
-            "title": title,
-            "document_content": {
-                "type": "markdown",
-                "markdown": content,
-            },
+            "canvas_id": canvas_id,
+            "changes": [
+                {
+                    "operation": "replace",
+                    "document_content": canvas_document_content(content),
+                }
+            ],
         },
         token,
     )
+
+
+def create_native_canvas(*, file_path: Path, title: str, token: str, channel: str = "") -> Dict:
+    content = file_path.read_text(encoding="utf-8")
+    if not content.strip():
+        raise SystemExit(f"Canvas file is empty: {file_path}")
+    payload = {
+        "title": title,
+        "document_content": canvas_document_content(content),
+    }
+    if channel:
+        payload["channel_id"] = channel
+    result = slack_api(
+        "canvases.create",
+        payload,
+        token,
+    )
+    canvas_id = slack_canvas_id(result)
+    if canvas_id:
+        result["content_edit"] = populate_native_canvas(canvas_id=canvas_id, content=content, token=token)
+    return result
 
 
 def share_canvas_with_channel(*, canvas_id: str, channel: str, token: str) -> Dict:
@@ -314,7 +341,7 @@ def main() -> None:
     file_path = Path(args.file)
     if args.mode in {"native", "auto"}:
         try:
-            result = create_native_canvas(file_path=file_path, title=args.title, token=token)
+            result = create_native_canvas(file_path=file_path, title=args.title, token=token, channel=channel)
             canvas_url = slack_canvas_url_or_construct(result, token=token)
             if not canvas_url:
                 raise RuntimeError(
