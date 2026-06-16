@@ -19,10 +19,34 @@ import generate_support_canvas as canvas
 import generate_help_report_dashboard as dashboard
 import post_slack_canvas_file as canvas_upload
 import run_weekly_help_bug_report as runner
+import run_slack_canvas_smoke_test as slack_smoke
 import support_triage
 
 
 class WeeklyHelpBugReportTest(unittest.TestCase):
+    def test_slack_smoke_files_do_not_depend_on_jira_or_openai(self):
+        tmp_dir = Path(tempfile.gettempdir())
+        report_path = tmp_dir / "support-slack-smoke-report-test.md"
+        canvas_path = tmp_dir / "support-slack-smoke-canvas-test.md"
+
+        try:
+            slack_smoke.write_smoke_files(
+                report_path,
+                canvas_path,
+                datetime(2026, 6, 15, 9, 0, tzinfo=slack_smoke.ET),
+            )
+
+            report_markdown = report_path.read_text(encoding="utf-8")
+            canvas_markdown = canvas_path.read_text(encoding="utf-8")
+        finally:
+            report_path.unlink(missing_ok=True)
+            canvas_path.unlink(missing_ok=True)
+
+        self.assertIn("SUPPORT AUTOMATION SLACK SMOKE TEST", report_markdown)
+        self.assertIn("without fetching Jira tickets or calling OpenAI", report_markdown)
+        self.assertIn("| Jira fetch | Skipped |", canvas_markdown)
+        self.assertIn("| OpenAI summary calls | Skipped |", canvas_markdown)
+
     def test_native_canvas_create_updates_original_report_post(self):
         tmp_path = Path(tempfile.gettempdir()) / "support-native-canvas-test.md"
         report_path = Path(tempfile.gettempdir()) / "support-native-canvas-report.md"
@@ -102,6 +126,26 @@ class WeeklyHelpBugReportTest(unittest.TestCase):
         self.assertNotIn("thread_ts", message_payload)
         self.assertIn("WEEKLY BUG REPORT", message_payload["text"])
         self.assertIn("https://app.slack.com/docs/T123/F123", message_payload["text"])
+
+    def test_canvas_access_failure_is_reported_without_secret_values(self):
+        old_share = canvas_upload.share_canvas_with_channel
+
+        def fake_share(*_args, **_kwargs):
+            raise canvas_upload.SlackApiError("Slack canvases.access.set failed: invalid_arguments")
+
+        try:
+            canvas_upload.share_canvas_with_channel = fake_share
+            access_result, access_error = canvas_upload.try_share_canvas_with_channel(
+                canvas_id="F123",
+                channel="C123",
+                token="xoxb-secret-token",
+            )
+        finally:
+            canvas_upload.share_canvas_with_channel = old_share
+
+        self.assertEqual(access_result, {})
+        self.assertIn("invalid_arguments", access_error)
+        self.assertNotIn("xoxb-secret-token", access_error)
 
     def test_canvas_file_upload_uses_slack_external_upload_flow(self):
         tmp_path = Path(tempfile.gettempdir()) / "support-canvas-upload-test.md"

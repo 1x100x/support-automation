@@ -206,6 +206,15 @@ def share_canvas_card(*, canvas_id: str, channel: str, thread_ts: str, token: st
     raise SlackApiError("; ".join(errors))
 
 
+def try_share_canvas_with_channel(*, canvas_id: str, channel: str, token: str) -> tuple[Dict, str]:
+    if not canvas_id:
+        return {}, "Slack Canvas response did not include a canvas_id."
+    try:
+        return share_canvas_with_channel(canvas_id=canvas_id, channel=channel, token=token), ""
+    except SlackApiError as exc:
+        return {}, str(exc)
+
+
 def canvas_link_line(canvas_url: str, title: str) -> str:
     return f"Canvas dashboard: <{canvas_url}|{title}>"
 
@@ -318,11 +327,16 @@ def main() -> None:
             share_result = {}
             share_error = ""
             if canvas_id:
-                try:
-                    access_result = share_canvas_with_channel(canvas_id=canvas_id, channel=channel, token=token)
-                except SlackApiError as exc:
-                    access_error = str(exc)
-                    print(f"::warning title=Slack Canvas channel access failed::{access_error}")
+                access_result, access_error = try_share_canvas_with_channel(
+                    canvas_id=canvas_id,
+                    channel=channel,
+                    token=token,
+                )
+                if access_error:
+                    print(
+                        "::warning title=Slack Canvas access share failed::"
+                        f"Created Canvas but could not grant channel access. Error: {access_error}"
+                    )
             update_report_message_with_canvas(
                 report_markdown_path=Path(args.report_md),
                 channel=channel,
@@ -343,10 +357,11 @@ def main() -> None:
                     share_error = str(exc)
                     print(f"::warning title=Slack Canvas card share failed::{share_error}")
             print(f"Created native Slack Canvas and updated original Slack report in channel {channel}: {canvas_url}")
+            canvas_visible = bool(access_result.get("ok") or share_result.get("ok"))
             write_status(
                 args.status_output,
                 {
-                    "ok": True,
+                    "ok": canvas_visible,
                     "mode": "native",
                     "channel": channel,
                     "thread_ts": thread_ts,
@@ -356,6 +371,7 @@ def main() -> None:
                     "access_error": access_error,
                     "shared_card": bool(share_result.get("ok")),
                     "share_error": share_error,
+                    "post_updated": True,
                 },
             )
             return
