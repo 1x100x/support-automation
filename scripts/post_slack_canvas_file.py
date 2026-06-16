@@ -236,6 +236,10 @@ def share_canvas_card(*, canvas_id: str, channel: str, token: str, thread_ts: st
     raise SlackApiError("; ".join(errors))
 
 
+def bot_token_canvas_share_note() -> str:
+    return "Skipped canvases.share because Slack rejects bot tokens with not_allowed_token_type."
+
+
 def try_share_canvas_with_channel(*, canvas_id: str, channel: str, token: str) -> tuple[Dict, str]:
     if not canvas_id:
         return {}, "Slack Canvas response did not include a canvas_id."
@@ -354,7 +358,7 @@ def main() -> None:
             access_result = {}
             access_error = ""
             share_result = {}
-            share_error = ""
+            share_error = bot_token_canvas_share_note()
             if canvas_id:
                 access_result, access_error = try_share_canvas_with_channel(
                     canvas_id=canvas_id,
@@ -366,15 +370,6 @@ def main() -> None:
                         "::warning title=Slack Canvas access share failed::"
                         f"Created Canvas but could not grant channel access. Error: {access_error}"
                     )
-                try:
-                    share_result = share_canvas_card(
-                        canvas_id=canvas_id,
-                        channel=channel,
-                        token=token,
-                    )
-                except SlackApiError as exc:
-                    share_error = str(exc)
-                    print(f"::warning title=Slack Canvas channel share failed::{share_error}")
             update_report_message_with_canvas(
                 report_markdown_path=Path(args.report_md),
                 channel=channel,
@@ -382,28 +377,19 @@ def main() -> None:
                 title=args.title,
                 token=token,
             )
-            if canvas_id and not access_result.get("ok") and not share_result.get("ok"):
-                try:
-                    share_result = share_canvas_card(
-                        canvas_id=canvas_id,
-                        channel=channel,
-                        token=token,
-                        thread_ts=thread_ts,
-                    )
-                except SlackApiError as exc:
-                    share_error = str(exc)
-                    print(f"::warning title=Slack Canvas card share failed::{share_error}")
-            print(f"Created native Slack Canvas and updated original Slack report in channel {channel}: {canvas_url}")
-            canvas_visible = bool(access_result.get("ok") or share_result.get("ok"))
+            print(f"Created native Slack Canvas tab and updated original Slack report in channel {channel}: {canvas_url}")
+            canvas_visible = bool(access_result.get("ok"))
             write_status(
                 args.status_output,
                 {
                     "ok": canvas_visible,
                     "mode": "native",
+                    "surface": "channel_tab",
                     "channel": channel,
                     "thread_ts": thread_ts,
                     "canvas_url": canvas_url,
                     "canvas_id": canvas_id,
+                    "channel_tab_created": True,
                     "access_set": bool(access_result.get("ok")),
                     "access_error": access_error,
                     "shared_card": bool(share_result.get("ok")),

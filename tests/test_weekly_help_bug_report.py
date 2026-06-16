@@ -255,6 +255,13 @@ class WeeklyHelpBugReportTest(unittest.TestCase):
         self.assertEqual(payload["channel_id"], "C123")
         self.assertNotIn("thread_ts", payload)
 
+    def test_canvas_share_note_records_bot_token_limitation(self):
+        note = canvas_upload.bot_token_canvas_share_note()
+
+        self.assertIn("not_allowed_token_type", note)
+        self.assertIn("bot tokens", note)
+        self.assertNotIn("xoxb-", note)
+
     def test_canvas_status_records_missing_file_scope_without_secret_values(self):
         error = canvas_upload.SlackApiError("Slack files.getUploadURLExternal failed: missing_scope")
 

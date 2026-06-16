@@ -113,7 +113,7 @@ Generated files are ignored by Git and uploaded as GitHub Actions artifacts:
 - The automation does not write to GitHub beyond workflow logs and artifacts.
 - Slack posting only happens on scheduled production runs or explicit manual runs with `post_slack=true`.
 - The Slack smoke test only posts a synthetic test message and Canvas; it does not fetch Jira data or call OpenAI.
-- When Slack posting runs, the workflow first tries to create a native Slack Canvas, share it with the report channel, and update the original report post with the Canvas link. If channel access sharing is rejected, it falls back to Slack's Canvas share API so the Canvas still renders visibly. If native Canvas creation fails in `auto` mode, it uploads the Canvas markdown into the thread as a Slack file.
+- When Slack posting runs, the workflow creates a native Slack Canvas as a channel tab, writes the generated Canvas markdown into it, grants channel access, and updates the original report post with a plain note that the Canvas dashboard was shared in the channel. Slack currently rejects `canvases.share` for the bot token type with `not_allowed_token_type`, so the bot-token path intentionally does not try to post a separate native Canvas card. If native Canvas creation fails in `auto` mode, it uploads the Canvas markdown into the thread as a Slack file.
 - If Canvas/file posting reports `missing_scope`, add the missing Slack bot scope and reinstall the Slack app so the existing `SLACK_BOT_TOKEN` receives the new permission.
 - Slack-facing summaries redact emails, wallet/contract addresses, and raw URLs.
 - LLM summary requests are redacted before sending, and model output is redacted again before Slack posting.
