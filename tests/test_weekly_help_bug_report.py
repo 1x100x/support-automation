@@ -209,6 +209,43 @@ class WeeklyHelpBugReportTest(unittest.TestCase):
         self.assertEqual(complete_payload["thread_ts"], "1781553559.231279")
         self.assertEqual(complete_payload["files"], [{"id": "F123", "title": "Weekly Help Bug Report Dashboard - June 11, 2026"}])
 
+    def test_canvas_card_share_payload_uses_channel_and_thread(self):
+        old_urlopen = canvas_upload.urllib.request.urlopen
+        calls = []
+
+        class FakeResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def read(self):
+                return json.dumps({"ok": True, "ts": "1781553559.999999"}).encode("utf-8")
+
+        def fake_urlopen(req, timeout=30):
+            calls.append((req.full_url, req.data, dict(req.header_items())))
+            if req.full_url.endswith("/canvases.share"):
+                return FakeResponse()
+            raise AssertionError(f"Unexpected URL: {req.full_url}")
+
+        try:
+            canvas_upload.urllib.request.urlopen = fake_urlopen
+            result = canvas_upload.share_canvas_card(
+                canvas_id="F123",
+                channel="C123",
+                thread_ts="1781553559.231279",
+                token="xoxb-test",
+            )
+        finally:
+            canvas_upload.urllib.request.urlopen = old_urlopen
+
+        self.assertTrue(result["ok"])
+        payload = json.loads(calls[0][1].decode("utf-8"))
+        self.assertEqual(payload["canvas_id"], "F123")
+        self.assertEqual(payload["channel_id"], "C123")
+        self.assertEqual(payload["thread_ts"], "1781553559.231279")
+
     def test_canvas_status_records_missing_file_scope_without_secret_values(self):
         error = canvas_upload.SlackApiError("Slack files.getUploadURLExternal failed: missing_scope")
 

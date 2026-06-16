@@ -155,11 +155,52 @@ def share_canvas_with_channel(*, canvas_id: str, channel: str, token: str) -> Di
             "channel_ids": [channel],
             "permission": "read",
         },
+        {
+            "canvas_id": canvas_id,
+            "channel_ids": [channel],
+            "access_level": "read",
+        },
+        {
+            "canvas_id": canvas_id,
+            "channel_id": channel,
+            "permission": "read",
+        },
+        {
+            "canvas_id": canvas_id,
+            "channel_id": channel,
+            "access_level": "read",
+        },
+        {
+            "canvas_id": canvas_id,
+            "access": [
+                {
+                    "type": "channel",
+                    "id": channel,
+                    "access_level": "read",
+                }
+            ],
+        },
     ]
     errors = []
     for payload in attempts:
         try:
             return slack_api("canvases.access.set", payload, token)
+        except SlackApiError as exc:
+            errors.append(str(exc))
+    raise SlackApiError("; ".join(errors))
+
+
+def share_canvas_card(*, canvas_id: str, channel: str, thread_ts: str, token: str) -> Dict:
+    attempts = [
+        {"canvas_id": canvas_id, "channel_id": channel, "thread_ts": thread_ts},
+        {"canvas_id": canvas_id, "channel": channel, "thread_ts": thread_ts},
+        {"file_id": canvas_id, "channel_id": channel, "thread_ts": thread_ts},
+    ]
+    errors = []
+    for payload in attempts:
+        payload = {key: value for key, value in payload.items() if value}
+        try:
+            return slack_api("canvases.share", payload, token)
         except SlackApiError as exc:
             errors.append(str(exc))
     raise SlackApiError("; ".join(errors))
@@ -279,10 +320,12 @@ def main() -> None:
                 raise RuntimeError(
                     "Slack created a Canvas response but did not return a URL or canvas_id. "
                     f"Response shape: {safe_response_keys(result)}"
-                )
+            )
             canvas_id = slack_canvas_id(result)
             access_result = {}
             access_error = ""
+            share_result = {}
+            share_error = ""
             if canvas_id:
                 access_result, access_error = try_share_canvas_with_channel(
                     canvas_id=canvas_id,
@@ -302,11 +345,23 @@ def main() -> None:
                 title=args.title,
                 token=token,
             )
+            if canvas_id and not access_result.get("ok"):
+                try:
+                    share_result = share_canvas_card(
+                        canvas_id=canvas_id,
+                        channel=channel,
+                        thread_ts=thread_ts,
+                        token=token,
+                    )
+                except SlackApiError as exc:
+                    share_error = str(exc)
+                    print(f"::warning title=Slack Canvas card share failed::{share_error}")
             print(f"Created native Slack Canvas and updated original Slack report in channel {channel}: {canvas_url}")
+            canvas_visible = bool(access_result.get("ok") or share_result.get("ok"))
             write_status(
                 args.status_output,
                 {
-                    "ok": not access_error,
+                    "ok": canvas_visible,
                     "mode": "native",
                     "channel": channel,
                     "thread_ts": thread_ts,
@@ -314,6 +369,8 @@ def main() -> None:
                     "canvas_id": canvas_id,
                     "access_set": bool(access_result.get("ok")),
                     "access_error": access_error,
+                    "shared_card": bool(share_result.get("ok")),
+                    "share_error": share_error,
                     "post_updated": True,
                 },
             )
