@@ -135,7 +135,7 @@ def populate_native_canvas(*, canvas_id: str, content: str, token: str) -> Dict:
             "canvas_id": canvas_id,
             "changes": [
                 {
-                    "operation": "replace",
+                    "operation": "insert_at_start",
                     "document_content": canvas_document_content(content),
                 }
             ],
@@ -150,7 +150,6 @@ def create_native_canvas(*, file_path: Path, title: str, token: str, channel: st
         raise SystemExit(f"Canvas file is empty: {file_path}")
     payload = {
         "title": title,
-        "document_content": canvas_document_content(content),
     }
     if channel:
         payload["channel_id"] = channel
@@ -249,8 +248,8 @@ def try_share_canvas_with_channel(*, canvas_id: str, channel: str, token: str) -
         return {}, str(exc)
 
 
-def canvas_link_line(title: str) -> str:
-    return f"Canvas dashboard: {title} shared in this channel."
+def canvas_link_line(canvas_url: str, title: str) -> str:
+    return f"Canvas dashboard: <{canvas_url}|Open {title}>"
 
 
 def update_report_message_with_canvas(
@@ -258,12 +257,13 @@ def update_report_message_with_canvas(
     report_markdown_path: Path,
     channel: str,
     message_ts: str,
+    canvas_url: str,
     title: str,
     token: str,
 ) -> Dict:
     markdown = report_markdown_path.read_text(encoding="utf-8")
     text = slack_text_from_report(markdown)
-    link_line = canvas_link_line(title)
+    link_line = canvas_link_line(canvas_url, title)
     if link_line not in text:
         text = f"{text.rstrip()}\n\n{link_line}"
     payload = {
@@ -355,6 +355,7 @@ def main() -> None:
                     f"Response shape: {safe_response_keys(result)}"
             )
             canvas_id = slack_canvas_id(result)
+            content_edit_result = result.get("content_edit") or {}
             access_result = {}
             access_error = ""
             share_result = {}
@@ -374,6 +375,7 @@ def main() -> None:
                 report_markdown_path=Path(args.report_md),
                 channel=channel,
                 message_ts=thread_ts,
+                canvas_url=canvas_url,
                 title=args.title,
                 token=token,
             )
@@ -390,6 +392,7 @@ def main() -> None:
                     "canvas_url": canvas_url,
                     "canvas_id": canvas_id,
                     "channel_tab_created": True,
+                    "content_edit_ok": bool(content_edit_result.get("ok")),
                     "access_set": bool(access_result.get("ok")),
                     "access_error": access_error,
                     "shared_card": bool(share_result.get("ok")),
