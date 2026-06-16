@@ -85,6 +85,8 @@ class WeeklyHelpBugReportTest(unittest.TestCase):
                 return FakeResponse(json.dumps({"ok": True, "team_id": "T123"}).encode("utf-8"))
             if req.full_url.endswith("/canvases.access.set"):
                 return FakeResponse(json.dumps({"ok": True}).encode("utf-8"))
+            if req.full_url.endswith("/canvases.share"):
+                return FakeResponse(json.dumps({"ok": True, "ts": "1781553559.888888"}).encode("utf-8"))
             if req.full_url.endswith("/chat.update"):
                 return FakeResponse(json.dumps({"ok": True, "ts": "1781553559.999999"}).encode("utf-8"))
             raise AssertionError(f"Unexpected URL: {req.full_url}")
@@ -106,7 +108,6 @@ class WeeklyHelpBugReportTest(unittest.TestCase):
                 report_markdown_path=report_path,
                 channel="C123",
                 message_ts="1781553559.231279",
-                canvas_url=canvas_upload.slack_canvas_url_or_construct(result, token="xoxb-test"),
                 title="Weekly Help Bug Report Dashboard - June 11, 2026",
                 token="xoxb-test",
             )
@@ -115,7 +116,7 @@ class WeeklyHelpBugReportTest(unittest.TestCase):
             tmp_path.unlink(missing_ok=True)
             report_path.unlink(missing_ok=True)
 
-        self.assertEqual(len(calls), 5)
+        self.assertEqual(len(calls), 4)
         create_payload = json.loads(calls[0][1].decode("utf-8"))
         self.assertEqual(create_payload["title"], "Weekly Help Bug Report Dashboard - June 11, 2026")
         self.assertEqual(create_payload["channel_id"], "C123")
@@ -128,12 +129,13 @@ class WeeklyHelpBugReportTest(unittest.TestCase):
         access_payload = json.loads(calls[2][1].decode("utf-8"))
         self.assertEqual(access_payload["canvas_id"], "F123")
         self.assertEqual(access_payload["access"][0]["channel_id"], "C123")
-        message_payload = json.loads(calls[4][1].decode("utf-8"))
+        message_payload = json.loads(calls[3][1].decode("utf-8"))
         self.assertEqual(message_payload["channel"], "C123")
         self.assertEqual(message_payload["ts"], "1781553559.231279")
         self.assertNotIn("thread_ts", message_payload)
         self.assertIn("WEEKLY BUG REPORT", message_payload["text"])
-        self.assertIn("https://app.slack.com/docs/T123/F123", message_payload["text"])
+        self.assertIn("Canvas dashboard: Weekly Help Bug Report Dashboard", message_payload["text"])
+        self.assertNotIn("https://app.slack.com/docs/T123/F123", message_payload["text"])
 
     def test_canvas_access_failure_is_reported_without_secret_values(self):
         old_share = canvas_upload.share_canvas_with_channel
@@ -217,7 +219,7 @@ class WeeklyHelpBugReportTest(unittest.TestCase):
         self.assertEqual(complete_payload["thread_ts"], "1781553559.231279")
         self.assertEqual(complete_payload["files"], [{"id": "F123", "title": "Weekly Help Bug Report Dashboard - June 11, 2026"}])
 
-    def test_canvas_card_share_payload_uses_channel_and_thread(self):
+    def test_canvas_card_share_payload_prefers_channel_level_share(self):
         old_urlopen = canvas_upload.urllib.request.urlopen
         calls = []
 
@@ -242,7 +244,6 @@ class WeeklyHelpBugReportTest(unittest.TestCase):
             result = canvas_upload.share_canvas_card(
                 canvas_id="F123",
                 channel="C123",
-                thread_ts="1781553559.231279",
                 token="xoxb-test",
             )
         finally:
@@ -252,7 +253,7 @@ class WeeklyHelpBugReportTest(unittest.TestCase):
         payload = json.loads(calls[0][1].decode("utf-8"))
         self.assertEqual(payload["canvas_id"], "F123")
         self.assertEqual(payload["channel_id"], "C123")
-        self.assertEqual(payload["thread_ts"], "1781553559.231279")
+        self.assertNotIn("thread_ts", payload)
 
     def test_canvas_status_records_missing_file_scope_without_secret_values(self):
         error = canvas_upload.SlackApiError("Slack files.getUploadURLExternal failed: missing_scope")
