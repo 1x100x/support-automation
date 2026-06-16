@@ -47,6 +47,7 @@ jobs:
       JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
       JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
       SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+      SLACK_USER_TOKEN: ${{ secrets.SLACK_USER_TOKEN }}
       SLACK_REPORT_CHANNEL_ID: ${{ secrets.SLACK_REPORT_CHANNEL_ID }}
       JIRA_HELP_DASHBOARD_URL: ${{ secrets.JIRA_HELP_DASHBOARD_URL }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}

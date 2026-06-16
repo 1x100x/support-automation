@@ -27,6 +27,25 @@ def require_env(name: str) -> str:
     return value
 
 
+def optional_env(name: str) -> str:
+    return os.getenv(name, "").strip()
+
+
+def token_kind(token: str) -> str:
+    if token.startswith("xoxp-") or token.startswith("xoxe.xoxp-"):
+        return "user"
+    if token.startswith("xoxb-") or token.startswith("xoxe.xoxb-"):
+        return "bot"
+    return "unknown"
+
+
+def canvas_token_from_env(*, bot_token: str) -> tuple[str, str]:
+    user_token = optional_env("SLACK_USER_TOKEN")
+    if user_token:
+        return user_token, "SLACK_USER_TOKEN"
+    return bot_token, "SLACK_BOT_TOKEN"
+
+
 def slack_api(method: str, payload: Dict, token: str) -> Dict:
     req = urllib.request.Request(
         url=f"{SLACK_API_BASE}/{method}",
@@ -239,6 +258,10 @@ def bot_token_canvas_share_note() -> str:
     return "Skipped canvases.share because Slack rejects bot tokens with not_allowed_token_type."
 
 
+def should_attempt_canvas_card_share(*, canvas_token_source: str, canvas_token: str) -> bool:
+    return canvas_token_source == "SLACK_USER_TOKEN" or token_kind(canvas_token) == "user"
+
+
 def try_share_canvas_with_channel(*, canvas_id: str, channel: str, token: str) -> tuple[Dict, str]:
     if not canvas_id:
         return {}, "Slack Canvas response did not include a canvas_id."
@@ -338,6 +361,7 @@ def main() -> None:
     args = parser.parse_args()
 
     token = require_env("SLACK_BOT_TOKEN")
+    canvas_token, canvas_token_source = canvas_token_from_env(bot_token=token)
     slack_result = read_slack_result(Path(args.slack_result_json))
     channel = str(slack_result.get("channel") or "").strip()
     thread_ts = str(slack_result.get("ts") or "").strip()
@@ -347,8 +371,8 @@ def main() -> None:
     file_path = Path(args.file)
     if args.mode in {"native", "auto"}:
         try:
-            result = create_native_canvas(file_path=file_path, title=args.title, token=token, channel=channel)
-            canvas_url = slack_canvas_url_or_construct(result, token=token)
+            result = create_native_canvas(file_path=file_path, title=args.title, token=canvas_token, channel=channel)
+            canvas_url = slack_canvas_url_or_construct(result, token=canvas_token)
             if not canvas_url:
                 raise RuntimeError(
                     "Slack created a Canvas response but did not return a URL or canvas_id. "
@@ -364,13 +388,27 @@ def main() -> None:
                 access_result, access_error = try_share_canvas_with_channel(
                     canvas_id=canvas_id,
                     channel=channel,
-                    token=token,
+                    token=canvas_token,
                 )
                 if access_error:
                     print(
                         "::warning title=Slack Canvas access share failed::"
                         f"Created Canvas but could not grant channel access. Error: {access_error}"
                     )
+                if should_attempt_canvas_card_share(
+                    canvas_token_source=canvas_token_source,
+                    canvas_token=canvas_token,
+                ):
+                    share_error = ""
+                    try:
+                        share_result = share_canvas_card(
+                            canvas_id=canvas_id,
+                            channel=channel,
+                            token=canvas_token,
+                        )
+                    except SlackApiError as exc:
+                        share_error = str(exc)
+                        print(f"::warning title=Slack Canvas card share failed::{share_error}")
             update_report_message_with_canvas(
                 report_markdown_path=Path(args.report_md),
                 channel=channel,
@@ -387,6 +425,8 @@ def main() -> None:
                     "ok": canvas_visible,
                     "mode": "native",
                     "surface": "channel_tab",
+                    "canvas_token_source": canvas_token_source,
+                    "canvas_token_kind": token_kind(canvas_token),
                     "channel": channel,
                     "thread_ts": thread_ts,
                     "canvas_url": canvas_url,

@@ -264,6 +264,38 @@ class WeeklyHelpBugReportTest(unittest.TestCase):
         self.assertIn("bot tokens", note)
         self.assertNotIn("xoxb-", note)
 
+    def test_canvas_token_prefers_optional_user_token(self):
+        old_user_token = canvas_upload.os.environ.get("SLACK_USER_TOKEN")
+        try:
+            canvas_upload.os.environ.pop("SLACK_USER_TOKEN", None)
+            token, source = canvas_upload.canvas_token_from_env(bot_token="xoxb-test")
+            self.assertEqual(token, "xoxb-test")
+            self.assertEqual(source, "SLACK_BOT_TOKEN")
+
+            canvas_upload.os.environ["SLACK_USER_TOKEN"] = "xoxp-test"
+            token, source = canvas_upload.canvas_token_from_env(bot_token="xoxb-test")
+            self.assertEqual(token, "xoxp-test")
+            self.assertEqual(source, "SLACK_USER_TOKEN")
+        finally:
+            if old_user_token is None:
+                canvas_upload.os.environ.pop("SLACK_USER_TOKEN", None)
+            else:
+                canvas_upload.os.environ["SLACK_USER_TOKEN"] = old_user_token
+
+    def test_canvas_card_share_only_attempted_with_user_token(self):
+        self.assertFalse(
+            canvas_upload.should_attempt_canvas_card_share(
+                canvas_token_source="SLACK_BOT_TOKEN",
+                canvas_token="xoxb-test",
+            )
+        )
+        self.assertTrue(
+            canvas_upload.should_attempt_canvas_card_share(
+                canvas_token_source="SLACK_USER_TOKEN",
+                canvas_token="xoxp-test",
+            )
+        )
+
     def test_canvas_status_records_missing_file_scope_without_secret_values(self):
         error = canvas_upload.SlackApiError("Slack files.getUploadURLExternal failed: missing_scope")
 
