@@ -2,6 +2,7 @@
 """Run the end-to-end Friday Help-board bug report workflow."""
 
 import argparse
+import json
 import os
 import subprocess
 import sys
@@ -59,6 +60,38 @@ def friday_window(now: datetime | None = None) -> tuple[datetime, datetime, date
 def is_friday_7am_et(now: datetime | None = None) -> bool:
     now_et = (now or datetime.now(ET)).astimezone(ET)
     return now_et.weekday() == 4 and now_et.hour == 7
+
+
+def expected_friday_7am_utc_cron(now: datetime | None = None) -> str:
+    now_et = (now or datetime.now(ET)).astimezone(ET)
+    utc_hour = (7 - int(now_et.utcoffset().total_seconds() // 3600)) % 24
+    return f"7 {utc_hour} * * 5"
+
+
+def github_event_schedule(event_path: str | None = None) -> str:
+    raw_path = event_path if event_path is not None else os.getenv("GITHUB_EVENT_PATH", "")
+    if not raw_path:
+        return ""
+    path = Path(raw_path)
+    if not path.exists():
+        return ""
+    try:
+        event = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return ""
+    return str(event.get("schedule", "")).strip()
+
+
+def should_run_scheduled_post(now: datetime | None = None, event_schedule: str | None = None) -> bool:
+    now_et = (now or datetime.now(ET)).astimezone(ET)
+    if now_et.weekday() != 4:
+        return False
+
+    schedule = github_event_schedule() if event_schedule is None else event_schedule.strip()
+    if schedule:
+        return schedule == expected_friday_7am_utc_cron(now_et)
+
+    return now_et.hour == 7
 
 
 def shell_quote_jql_datetime(value: datetime) -> str:
@@ -192,8 +225,11 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    if args.schedule_gate and not is_friday_7am_et():
-        print("Schedule gate skipped: current America/New_York time is not Friday 7 AM.")
+    if args.schedule_gate and not should_run_scheduled_post():
+        schedule = github_event_schedule()
+        expected = expected_friday_7am_utc_cron()
+        suffix = f" schedule={schedule or 'none'} expected={expected}"
+        print("Schedule gate skipped: this is not the active Friday 7 AM New York cron." + suffix)
         return
 
     since, until_exclusive, report_date = friday_window()
