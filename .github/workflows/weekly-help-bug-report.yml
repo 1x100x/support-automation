@@ -28,6 +28,9 @@ on:
           - "false"
           - "true"
   schedule:
+    # Temporary canary while validating GitHub scheduled events. The Python
+    # schedule gate skips Slack posting for this cron.
+    - cron: "*/5 * * * *"
     - cron: "30 14 * * 5"
     - cron: "30 15 * * 5"
 
