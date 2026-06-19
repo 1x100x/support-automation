@@ -8,7 +8,7 @@ The workflow is intentionally read-only for Jira and GitHub. It fetches Jira HEL
 
 The report covers the previous Friday at 12:00 AM America/New_York through Thursday at 11:59:59 PM America/New_York.
 
-GitHub Actions runs on Fridays at both `11:00 UTC` and `12:00 UTC`. The Python runner includes a schedule gate so only the run that lands at Friday 7:00 AM New York time posts to Slack. This avoids daylight-saving-time drift.
+GitHub Actions runs on Fridays at both `11:07 UTC` and `12:07 UTC`. The Python runner reads the scheduled cron from the GitHub event payload and posts only from the cron that maps to Friday 7:00 AM New York time for the current daylight-saving offset. This avoids daylight-saving-time drift and keeps late GitHub runner starts from skipping the report.
 
 ## GitHub Secrets
 
