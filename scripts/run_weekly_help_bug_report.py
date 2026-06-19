@@ -13,7 +13,7 @@ from zoneinfo import ZoneInfo
 
 ET = ZoneInfo("America/New_York")
 ROOT = Path(__file__).resolve().parents[1]
-SCHEDULED_POST_HOUR_ET = 9
+SCHEDULED_POST_HOUR_ET = 10
 SCHEDULED_POST_MINUTE_ET = 30
 
 
