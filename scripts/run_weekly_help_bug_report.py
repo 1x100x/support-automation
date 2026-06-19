@@ -13,6 +13,8 @@ from zoneinfo import ZoneInfo
 
 ET = ZoneInfo("America/New_York")
 ROOT = Path(__file__).resolve().parents[1]
+SCHEDULED_POST_HOUR_ET = 9
+SCHEDULED_POST_MINUTE_ET = 30
 
 
 def load_env_file(path: Path) -> None:
@@ -62,10 +64,19 @@ def is_friday_7am_et(now: datetime | None = None) -> bool:
     return now_et.weekday() == 4 and now_et.hour == 7
 
 
-def expected_friday_7am_utc_cron(now: datetime | None = None) -> str:
+def is_friday_scheduled_post_time_et(now: datetime | None = None) -> bool:
     now_et = (now or datetime.now(ET)).astimezone(ET)
-    utc_hour = (7 - int(now_et.utcoffset().total_seconds() // 3600)) % 24
-    return f"7 {utc_hour} * * 5"
+    return (
+        now_et.weekday() == 4
+        and now_et.hour == SCHEDULED_POST_HOUR_ET
+        and now_et.minute >= SCHEDULED_POST_MINUTE_ET
+    )
+
+
+def expected_friday_scheduled_post_utc_cron(now: datetime | None = None) -> str:
+    now_et = (now or datetime.now(ET)).astimezone(ET)
+    utc_hour = (SCHEDULED_POST_HOUR_ET - int(now_et.utcoffset().total_seconds() // 3600)) % 24
+    return f"{SCHEDULED_POST_MINUTE_ET} {utc_hour} * * 5"
 
 
 def github_event_schedule(event_path: str | None = None) -> str:
@@ -89,9 +100,9 @@ def should_run_scheduled_post(now: datetime | None = None, event_schedule: str |
 
     schedule = github_event_schedule() if event_schedule is None else event_schedule.strip()
     if schedule:
-        return schedule == expected_friday_7am_utc_cron(now_et)
+        return schedule == expected_friday_scheduled_post_utc_cron(now_et)
 
-    return now_et.hour == 7
+    return is_friday_scheduled_post_time_et(now_et)
 
 
 def shell_quote_jql_datetime(value: datetime) -> str:
@@ -221,15 +232,15 @@ def main() -> None:
     parser.add_argument(
         "--schedule-gate",
         action="store_true",
-        help="Exit without work unless the current America/New_York time is Friday 7 AM.",
+        help="Exit without work unless this is the active scheduled America/New_York Friday post.",
     )
     args = parser.parse_args()
 
     if args.schedule_gate and not should_run_scheduled_post():
         schedule = github_event_schedule()
-        expected = expected_friday_7am_utc_cron()
+        expected = expected_friday_scheduled_post_utc_cron()
         suffix = f" schedule={schedule or 'none'} expected={expected}"
-        print("Schedule gate skipped: this is not the active Friday 7 AM New York cron." + suffix)
+        print("Schedule gate skipped: this is not the active Friday New York post cron." + suffix)
         return
 
     since, until_exclusive, report_date = friday_window()
