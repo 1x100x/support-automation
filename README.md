@@ -8,9 +8,7 @@ The workflow is intentionally read-only for Jira and GitHub. It fetches Jira HEL
 
 The report covers the previous Friday at 12:00 AM America/New_York through Thursday at 11:59:59 PM America/New_York.
 
-GitHub Actions is temporarily configured with a one-off production test schedule for Monday, June 22, 2026 at 12:30 PM America/New_York (`30 16 * * 1`). The Python runner allows that cron only on June 22, 2026, so it will not post on later Mondays if the temporary cron is not removed immediately.
-
-The intended production schedule is Friday morning. The Python runner reads the scheduled cron from the GitHub event payload and posts only from the cron that maps to the configured New York local post time for the current daylight-saving offset. This avoids daylight-saving-time drift and keeps late GitHub runner starts from skipping the report.
+GitHub Actions runs on Fridays at both `07:30 UTC` and `08:30 UTC`, which map to 3:30 AM America/New_York during daylight-saving and standard time respectively. The Python runner reads the scheduled cron from the GitHub event payload and posts only from the cron that maps to the configured New York local post time for the current daylight-saving offset. This avoids daylight-saving-time drift and gives GitHub's scheduler several hours of buffer before the Friday share-out window.
 
 ## GitHub Secrets
 
