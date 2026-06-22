@@ -13,8 +13,11 @@ from zoneinfo import ZoneInfo
 
 ET = ZoneInfo("America/New_York")
 ROOT = Path(__file__).resolve().parents[1]
-SCHEDULED_POST_HOUR_ET = 10
-SCHEDULED_POST_MINUTE_ET = 30
+SCHEDULED_POST_HOUR_ET = 7
+SCHEDULED_POST_MINUTE_ET = 7
+ONE_OFF_SCHEDULE_DATES_BY_CRON = {
+    "30 13 * * 1": "2026-06-22",
+}
 
 
 def load_env_file(path: Path) -> None:
@@ -95,10 +98,14 @@ def github_event_schedule(event_path: str | None = None) -> str:
 
 def should_run_scheduled_post(now: datetime | None = None, event_schedule: str | None = None) -> bool:
     now_et = (now or datetime.now(ET)).astimezone(ET)
+    schedule = github_event_schedule() if event_schedule is None else event_schedule.strip()
+    one_off_date = ONE_OFF_SCHEDULE_DATES_BY_CRON.get(schedule)
+    if one_off_date:
+        return now_et.strftime("%Y-%m-%d") == one_off_date
+
     if now_et.weekday() != 4:
         return False
 
-    schedule = github_event_schedule() if event_schedule is None else event_schedule.strip()
     if schedule:
         return schedule == expected_friday_scheduled_post_utc_cron(now_et)
 
