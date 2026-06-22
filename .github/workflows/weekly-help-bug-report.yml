@@ -28,11 +28,8 @@ on:
           - "false"
           - "true"
   schedule:
-    # Temporary canary while validating GitHub scheduled event delivery. The Python
-    # schedule gate skips Slack posting for this cron.
-    - cron: "*/5 * * * *"
-    - cron: "30 14 * * 5"
-    - cron: "30 15 * * 5"
+    # Temporary one-off production test for Monday, June 22, 2026 at 9:30 AM ET.
+    - cron: "30 13 * * 1"
 
 permissions:
   contents: read
