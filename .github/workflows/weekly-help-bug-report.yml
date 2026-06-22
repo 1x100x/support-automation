@@ -28,8 +28,8 @@ on:
           - "false"
           - "true"
   schedule:
-    # Temporary one-off production test for Monday, June 22, 2026 at 12:30 PM ET.
-    - cron: "30 16 * * 1"
+    - cron: "30 7 * * 5"
+    - cron: "30 8 * * 5"
 
 permissions:
   contents: read

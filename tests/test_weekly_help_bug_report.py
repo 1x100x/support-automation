@@ -444,26 +444,18 @@ class WeeklyHelpBugReportTest(unittest.TestCase):
         summer_friday_delayed = datetime(2026, 6, 19, 10, 15, tzinfo=runner.ET)
         winter_friday_delayed = datetime(2026, 1, 16, 10, 15, tzinfo=runner.ET)
 
-        self.assertEqual(runner.expected_friday_scheduled_post_utc_cron(summer_friday_delayed), "7 11 * * 5")
-        self.assertTrue(runner.should_run_scheduled_post(summer_friday_delayed, "7 11 * * 5"))
-        self.assertFalse(runner.should_run_scheduled_post(summer_friday_delayed, "7 12 * * 5"))
+        self.assertEqual(runner.expected_friday_scheduled_post_utc_cron(summer_friday_delayed), "30 7 * * 5")
+        self.assertTrue(runner.should_run_scheduled_post(summer_friday_delayed, "30 7 * * 5"))
+        self.assertFalse(runner.should_run_scheduled_post(summer_friday_delayed, "30 8 * * 5"))
 
-        self.assertEqual(runner.expected_friday_scheduled_post_utc_cron(winter_friday_delayed), "7 12 * * 5")
-        self.assertTrue(runner.should_run_scheduled_post(winter_friday_delayed, "7 12 * * 5"))
-        self.assertFalse(runner.should_run_scheduled_post(winter_friday_delayed, "7 11 * * 5"))
+        self.assertEqual(runner.expected_friday_scheduled_post_utc_cron(winter_friday_delayed), "30 8 * * 5")
+        self.assertTrue(runner.should_run_scheduled_post(winter_friday_delayed, "30 8 * * 5"))
+        self.assertFalse(runner.should_run_scheduled_post(winter_friday_delayed, "30 7 * * 5"))
 
     def test_schedule_gate_falls_back_to_exact_local_hour_without_event_cron(self):
-        self.assertTrue(runner.should_run_scheduled_post(datetime(2026, 6, 5, 7, 7, tzinfo=runner.ET), ""))
-        self.assertFalse(runner.should_run_scheduled_post(datetime(2026, 6, 5, 7, 6, tzinfo=runner.ET), ""))
-        self.assertFalse(runner.should_run_scheduled_post(datetime(2026, 6, 5, 8, 0, tzinfo=runner.ET), ""))
-
-    def test_schedule_gate_allows_one_off_test_cron_only_on_configured_date(self):
-        self.assertTrue(
-            runner.should_run_scheduled_post(datetime(2026, 6, 22, 12, 45, tzinfo=runner.ET), "30 16 * * 1")
-        )
-        self.assertFalse(
-            runner.should_run_scheduled_post(datetime(2026, 6, 23, 12, 45, tzinfo=runner.ET), "30 16 * * 1")
-        )
+        self.assertTrue(runner.should_run_scheduled_post(datetime(2026, 6, 5, 3, 30, tzinfo=runner.ET), ""))
+        self.assertFalse(runner.should_run_scheduled_post(datetime(2026, 6, 5, 3, 29, tzinfo=runner.ET), ""))
+        self.assertFalse(runner.should_run_scheduled_post(datetime(2026, 6, 5, 4, 0, tzinfo=runner.ET), ""))
 
     def test_jira_fetcher_uses_new_search_jql_payload(self):
         payload = fetch_jira.search_payload("project = HELP", 25, "next-page-token")
