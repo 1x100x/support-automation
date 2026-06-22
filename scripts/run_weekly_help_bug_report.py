@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SCHEDULED_POST_HOUR_ET = 7
 SCHEDULED_POST_MINUTE_ET = 7
 ONE_OFF_SCHEDULE_DATES_BY_CRON = {
-    "30 13 * * 1": "2026-06-22",
+    "30 16 * * 1": "2026-06-22",
 }
 
 
