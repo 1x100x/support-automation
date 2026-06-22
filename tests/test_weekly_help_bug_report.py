@@ -459,10 +459,10 @@ class WeeklyHelpBugReportTest(unittest.TestCase):
 
     def test_schedule_gate_allows_one_off_test_cron_only_on_configured_date(self):
         self.assertTrue(
-            runner.should_run_scheduled_post(datetime(2026, 6, 22, 9, 45, tzinfo=runner.ET), "30 13 * * 1")
+            runner.should_run_scheduled_post(datetime(2026, 6, 22, 12, 45, tzinfo=runner.ET), "30 16 * * 1")
         )
         self.assertFalse(
-            runner.should_run_scheduled_post(datetime(2026, 6, 23, 9, 45, tzinfo=runner.ET), "30 13 * * 1")
+            runner.should_run_scheduled_post(datetime(2026, 6, 23, 12, 45, tzinfo=runner.ET), "30 16 * * 1")
         )
 
     def test_jira_fetcher_uses_new_search_jql_payload(self):
