@@ -13,7 +13,7 @@ from zoneinfo import ZoneInfo
 
 ET = ZoneInfo("America/New_York")
 ROOT = Path(__file__).resolve().parents[1]
-SCHEDULED_POST_HOUR_ET = 3
+SCHEDULED_POST_HOUR_ET = 8
 SCHEDULED_POST_MINUTE_ET = 30
 
 
@@ -59,9 +59,9 @@ def friday_window(now: datetime | None = None) -> tuple[datetime, datetime, date
     return since, until_exclusive, report_date
 
 
-def is_friday_7am_et(now: datetime | None = None) -> bool:
+def is_friday_8am_et(now: datetime | None = None) -> bool:
     now_et = (now or datetime.now(ET)).astimezone(ET)
-    return now_et.weekday() == 4 and now_et.hour == 7
+    return now_et.weekday() == 4 and now_et.hour == 8
 
 
 def is_friday_scheduled_post_time_et(now: datetime | None = None) -> bool:

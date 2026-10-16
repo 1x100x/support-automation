@@ -28,8 +28,8 @@ on:
           - "false"
           - "true"
   schedule:
-    - cron: "30 7 * * 5"
-    - cron: "30 8 * * 5"
+    - cron: "30 12 * * 5"
+    - cron: "30 13 * * 5"
 
 permissions:
   contents: read
