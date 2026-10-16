@@ -28,7 +28,7 @@ def trend_weeks(weekly_report: Dict, trend_data: Dict, lookback_weeks: int) -> L
     until = parse_report_dt(weekly_report["metadata"]["until"])
     current_start = parse_report_dt(weekly_report["metadata"]["since"])
     first_start = current_start - timedelta(days=7 * (lookback_weeks - 1))
-    tickets = trend_data.get("tickets", [])
+    tickets = report.dedupe_tickets(trend_data.get("tickets", []))
     rows = []
     for index in range(lookback_weeks):
         start = first_start + timedelta(days=7 * index)
@@ -79,7 +79,7 @@ def likely_code_area(ticket: Dict) -> str:
 
 def ticket_rows(tickets: Iterable[Dict]) -> List[str]:
     rows = []
-    for ticket in tickets:
+    for ticket in report.dedupe_tickets(tickets):
         labels = labels_for(ticket)
         needs_engineering = labels.get("needs_engineering", "unknown")
         if not report.is_bug(ticket):

@@ -46,6 +46,30 @@ def labels_for(ticket: Dict) -> Dict:
     return labels
 
 
+def ticket_identity(ticket: Dict):
+    key = str(ticket.get("key") or ticket.get("id") or "").strip().upper()
+    if key:
+        return ("key", key)
+    return (
+        "fallback",
+        str(ticket.get("title") or "").strip(),
+        str(ticket.get("created_at") or "").strip(),
+        str(ticket.get("source_url") or "").strip(),
+    )
+
+
+def dedupe_tickets(tickets: Iterable[Dict]) -> List[Dict]:
+    deduped = []
+    seen = set()
+    for ticket in tickets:
+        identity = ticket_identity(ticket)
+        if identity in seen:
+            continue
+        seen.add(identity)
+        deduped.append(ticket)
+    return deduped
+
+
 def in_window(ticket: Dict, since: datetime, until: datetime) -> bool:
     created = parse_dt(ticket.get("created_at", ""))
     if created is None:
@@ -581,7 +605,7 @@ def build_report(data: Dict, days: int, friday_window: bool, use_llm_summaries: 
     else:
         until = datetime.now(ET)
         since = until - timedelta(days=days)
-    tickets = data.get("tickets", [])
+    tickets = dedupe_tickets(data.get("tickets", []))
     window_tickets = [dict(ticket) for ticket in tickets if in_window(ticket, since, until)]
     llm_summary_count = 0
     summary_source = "heuristic"

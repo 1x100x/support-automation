@@ -435,27 +435,27 @@ class WeeklyHelpBugReportTest(unittest.TestCase):
             'project = HELP AND created >= "2026-05-22" AND created < "2026-05-29" ORDER BY created DESC',
         )
 
-    def test_schedule_gate_allows_only_friday_7am_et(self):
-        self.assertTrue(runner.is_friday_7am_et(datetime(2026, 6, 5, 7, 0, tzinfo=runner.ET)))
-        self.assertFalse(runner.is_friday_7am_et(datetime(2026, 6, 5, 8, 0, tzinfo=runner.ET)))
-        self.assertFalse(runner.is_friday_7am_et(datetime(2026, 6, 4, 7, 0, tzinfo=runner.ET)))
+    def test_schedule_gate_allows_only_friday_8am_et(self):
+        self.assertTrue(runner.is_friday_8am_et(datetime(2026, 6, 5, 8, 0, tzinfo=runner.ET)))
+        self.assertFalse(runner.is_friday_8am_et(datetime(2026, 6, 5, 7, 0, tzinfo=runner.ET)))
+        self.assertFalse(runner.is_friday_8am_et(datetime(2026, 6, 4, 8, 0, tzinfo=runner.ET)))
 
     def test_schedule_gate_uses_event_cron_for_dst(self):
         summer_friday_delayed = datetime(2026, 6, 19, 10, 15, tzinfo=runner.ET)
         winter_friday_delayed = datetime(2026, 1, 16, 10, 15, tzinfo=runner.ET)
 
-        self.assertEqual(runner.expected_friday_scheduled_post_utc_cron(summer_friday_delayed), "30 7 * * 5")
-        self.assertTrue(runner.should_run_scheduled_post(summer_friday_delayed, "30 7 * * 5"))
-        self.assertFalse(runner.should_run_scheduled_post(summer_friday_delayed, "30 8 * * 5"))
+        self.assertEqual(runner.expected_friday_scheduled_post_utc_cron(summer_friday_delayed), "30 12 * * 5")
+        self.assertTrue(runner.should_run_scheduled_post(summer_friday_delayed, "30 12 * * 5"))
+        self.assertFalse(runner.should_run_scheduled_post(summer_friday_delayed, "30 13 * * 5"))
 
-        self.assertEqual(runner.expected_friday_scheduled_post_utc_cron(winter_friday_delayed), "30 8 * * 5")
-        self.assertTrue(runner.should_run_scheduled_post(winter_friday_delayed, "30 8 * * 5"))
-        self.assertFalse(runner.should_run_scheduled_post(winter_friday_delayed, "30 7 * * 5"))
+        self.assertEqual(runner.expected_friday_scheduled_post_utc_cron(winter_friday_delayed), "30 13 * * 5")
+        self.assertTrue(runner.should_run_scheduled_post(winter_friday_delayed, "30 13 * * 5"))
+        self.assertFalse(runner.should_run_scheduled_post(winter_friday_delayed, "30 12 * * 5"))
 
     def test_schedule_gate_falls_back_to_exact_local_hour_without_event_cron(self):
-        self.assertTrue(runner.should_run_scheduled_post(datetime(2026, 6, 5, 3, 30, tzinfo=runner.ET), ""))
-        self.assertFalse(runner.should_run_scheduled_post(datetime(2026, 6, 5, 3, 29, tzinfo=runner.ET), ""))
-        self.assertFalse(runner.should_run_scheduled_post(datetime(2026, 6, 5, 4, 0, tzinfo=runner.ET), ""))
+        self.assertTrue(runner.should_run_scheduled_post(datetime(2026, 6, 5, 8, 30, tzinfo=runner.ET), ""))
+        self.assertFalse(runner.should_run_scheduled_post(datetime(2026, 6, 5, 8, 29, tzinfo=runner.ET), ""))
+        self.assertFalse(runner.should_run_scheduled_post(datetime(2026, 6, 5, 9, 0, tzinfo=runner.ET), ""))
 
     def test_jira_fetcher_uses_new_search_jql_payload(self):
         payload = fetch_jira.search_payload("project = HELP", 25, "next-page-token")
@@ -701,6 +701,44 @@ class WeeklyHelpBugReportTest(unittest.TestCase):
         self.assertEqual(payload["breakdowns"]["issue_type_all"], [("task", 1)])
         self.assertEqual(payload["service_ticket_counts"], [("task", 1)])
 
+    def test_report_dedupes_duplicate_ticket_keys_before_counts(self):
+        created_at = report.datetime.now(report.ET).isoformat()
+        tickets = [
+            {
+                "key": "HELP-1",
+                "created_at": created_at,
+                "suggested_labels": {"issue_type": "bug", "needs_engineering": "yes"},
+            },
+            {
+                "key": "HELP-1",
+                "created_at": created_at,
+                "suggested_labels": {"issue_type": "bug", "needs_engineering": "yes"},
+            },
+            {
+                "key": "HELP-2",
+                "created_at": created_at,
+                "suggested_labels": {"issue_type": "account"},
+            },
+            {
+                "key": "HELP-3",
+                "created_at": created_at,
+                "suggested_labels": {"issue_type": "task"},
+            },
+            {
+                "key": "HELP-3",
+                "created_at": created_at,
+                "suggested_labels": {"issue_type": "task"},
+            },
+        ]
+
+        payload = report.build_report({"metadata": {"workflow": "test"}, "tickets": tickets}, days=7, friday_window=False)
+
+        self.assertEqual(payload["totals"]["inbound"], 3)
+        self.assertEqual(payload["totals"]["bugs"], 1)
+        self.assertEqual(payload["breakdowns"]["issue_type_all"], [("task", 2), ("bug", 1)])
+        self.assertEqual(payload["service_ticket_counts"], [("task", 2)])
+        self.assertEqual([ticket["key"] for ticket in payload["window_tickets"]], ["HELP-1", "HELP-2", "HELP-3"])
+
     def test_slack_report_header_uses_generated_post_date(self):
         payload = {
             "metadata": {
@@ -855,6 +893,52 @@ class WeeklyHelpBugReportTest(unittest.TestCase):
         self.assertIn("| May 29-Jun 4 | 0 | 1 | 1 |", markdown)
         self.assertIn(":large_red_square:", markdown)
         self.assertIn(":large_blue_square:", markdown)
+
+    def test_canvas_trend_dedupes_duplicate_ticket_keys(self):
+        weekly_report = {
+            "metadata": {
+                "since": "2026-05-29T00:00:00-04:00",
+                "until": "2026-06-04T23:59:59-04:00",
+            },
+            "totals": {"inbound": 3, "bugs": 1, "needs_engineering": 1, "low_confidence": 0},
+            "service_ticket_counts": [("task", 2)],
+            "bug_tickets": [],
+            "window_tickets": [],
+        }
+        trend_data = {
+            "tickets": [
+                {
+                    "key": "HELP-1",
+                    "created_at": "2026-05-30T12:00:00-04:00",
+                    "suggested_labels": {"issue_type": "bug"},
+                },
+                {
+                    "key": "HELP-1",
+                    "created_at": "2026-05-30T12:00:00-04:00",
+                    "suggested_labels": {"issue_type": "bug"},
+                },
+                {
+                    "key": "HELP-2",
+                    "created_at": "2026-05-31T12:00:00-04:00",
+                    "suggested_labels": {"issue_type": "account"},
+                },
+                {
+                    "key": "HELP-3",
+                    "created_at": "2026-06-01T12:00:00-04:00",
+                    "suggested_labels": {"issue_type": "task"},
+                },
+                {
+                    "key": "HELP-3",
+                    "created_at": "2026-06-01T12:00:00-04:00",
+                    "suggested_labels": {"issue_type": "task"},
+                },
+            ]
+        }
+
+        markdown = canvas.build_canvas_markdown(weekly_report, trend_data, 1)
+
+        self.assertIn("| May 29-Jun 4 | 1 | 2 | 3 |", markdown)
+        self.assertIn("Total across trend window: 3 issues (1 bug, 2 task).", markdown)
 
 
 if __name__ == "__main__":
